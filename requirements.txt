@@ -1,0 +1,28 @@
+# Everything here is FREE and open-source. No paid services, no vendor lock-in.
+
+# Agent orchestration (pulls langchain-core automatically)
+langgraph
+
+# RAG / vector store — local & free (ships a built-in embedding model)
+chromadb
+
+# Free web search (no API key, no account)
+duckduckgo-search
+
+# Utilities (all free)
+python-dotenv
+pandas
+numpy
+rich
+tqdm
+httpx              # used to talk to the local/free LLM backend over HTTP
+
+# Testing
+pytest
+
+# --- Optional / per-topic (uncomment only if needed; still all free) ---
+# faiss-cpu              # alternative vector store
+# sentence-transformers  # local embeddings (large; pulls torch)
+# matplotlib             # plots (traffic paths, metric bars)
+# pygame                 # traffic negotiation visualizer
+# gitpython              # GitHub issue agent: read repos
