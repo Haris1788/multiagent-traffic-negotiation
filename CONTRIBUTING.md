@@ -23,14 +23,15 @@ system design is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Workflow
 
-1. **Branch** off `main`: `git checkout -b r3/zeroshot-prompt` (use your role + topic).
+1. **Pull `main` first:** `git pull origin main`. (Work on your own branch if you like,
+   or commit straight to `main` — your call. Keep commits small and frequent.)
 2. **Work against the contracts**, not other people's internals:
    - Agents implement `choose_move(state, car_id) -> Move`.
    - The environment exposes `reset()`, `step(moves)`, `is_done()`, `all_arrived()`.
    Keep these signatures stable so everyone integrates cleanly.
 3. **Keep the environment LLM-free** — only agents call `src/llm.py`.
 4. **Tests must pass** before you push: `python -m pytest`. Add a test for new behavior.
-5. **Open a Pull Request** to `main`. R1 reviews/integrates. Small, frequent PRs.
+5. **Push to `main`** (`git push origin main`). No review needed — green tests are the gate.
 
 ## Conventions
 

@@ -6,13 +6,13 @@ everyone can build **in parallel** today.
 
 ## The 5 roles (mapped to the Traffic project)
 
-| # | Role | Owns (files) | Builds, in parallel |
-|---|------|--------------|---------------------|
-| **R1** | **Integration Lead** | `traffic/simulator.py`, later the LangGraph graph; merges branches; keeps tests green | The turn loop + interface contracts, so R2–R5 build against them immediately. |
-| **R2** | **Environment Engineer** | `traffic/environment.py` | The grid, kinematics (1–2 cells/turn, no diagonals, 1 turn to brake), and collision rules. Pure Python, no LLM. |
-| **R3** | **Zero-Shot Agent (baseline)** | `traffic/agents/zeroshot_agent.py` | The direct-prompt driver + move parsing — our control approach. |
-| **R4** | **ReAct Agent (comparison)** | `traffic/agents/react_agent.py` | The Thought→Action→Observation reasoning loop + its trace — our main hypothesis. |
-| **R5** | **Evaluation & Results Lead** | `traffic/evaluate.py`, metrics, plots, the final slide deck | The 50–100-episode sweep, the comparison table/plots, and the report. |
+| # | Role | Assigned to | Owns (files) | Builds, in parallel |
+|---|------|-------------|--------------|---------------------|
+| **R1** | **Integration Lead** | **Haris** | `traffic/simulator.py`, later the LangGraph graph | Builds the turn loop + the contracts R2–R5 plug into — owns a file like everyone else. Plus a **light** "does it all still run together?" check near deadlines. **Not** a daily reviewer; everyone pushes their own work. |
+| **R2** | **Environment Engineer** | _(pick at kickoff)_ | `traffic/environment.py` | The grid, kinematics (1–2 cells/turn, no diagonals, 1 turn to brake), and collision rules. Pure Python, no LLM. |
+| **R3** | **Zero-Shot Agent (baseline)** | _(pick at kickoff)_ | `traffic/agents/zeroshot_agent.py` | The direct-prompt driver + move parsing — our control approach. |
+| **R4** | **ReAct Agent (comparison)** | _(pick at kickoff)_ | `traffic/agents/react_agent.py` | The Thought→Action→Observation reasoning loop + its trace — our main hypothesis. |
+| **R5** | **Evaluation & Results Lead** | _(pick at kickoff)_ | `traffic/evaluate.py`, metrics, plots, the final slide deck | The 50–100-episode sweep, the comparison table/plots, and the report. |
 
 > Assign names to R1–R5 in your first meeting. Tip: strongest integrator → R1; whoever
 > likes data/plots → R5. R2's environment unblocks everyone, so prioritize it in W1.
@@ -24,17 +24,18 @@ everyone can build **in parallel** today.
 2. **Discuss → align → assign.** We agree the next week's goal for each person before
    leaving the meeting.
 3. **Work in parallel** against the agreed interfaces. Small, frequent commits.
-4. **Smoke tests must stay green** (`python -m pytest`). R1 integrates mid-week.
+4. **Everyone pushes their own work directly to `main`.** Pull first, run
+   `python -m pytest`, then push — green tests are the only gate. No mandatory review.
 
 ## 1-month timeline (4 working weeks)
 
 | Week | Dates | Goal | Per-role focus |
 |------|-------|------|----------------|
 | **W0** | now → 09.06 | Finalize topic; env ready (✅ done) | Everyone reads the course material + the chosen topic's README. |
-| **W1** | 10.06 – 16.06 | **Thin slice runs end-to-end** (even if dumb). Kickoff meeting right after Session 1 (10.06). | R1 graph wiring · R2 data layer · R3 first agent · R4 second agent · R5 metrics + baseline. |
-| **W2** | 17.06 – 23.06 | **Baseline approach fully working + first eval numbers.** Register for coaching by **19.06**. | R1 integrate · R2/R3/R4 harden their modules · R5 run baseline, log results. |
-| **W3** | 24.06 – 30.06 | **Add the comparison approach** (RAG / ReAct / multi-agent) + full evaluation. Coaching session **24.06** — bring questions. | R4 leads the comparison approach · R5 runs the A/B eval + plots · R1 keeps it integrated. |
-| **W4** | 01.07 – 07.07 | **Polish, ablations, write report & slides.** Submit presentation by **07.07**. | Everyone writes their section; R5 owns the deck; R1 final cleanup. |
+| **W1** | 10.06 – 16.06 | **Thin slice runs end-to-end** (even if dumb). Kickoff meeting right after Session 1 (10.06). | R1 builds the turn loop + freezes contracts · R2 data layer · R3 first agent · R4 second agent · R5 metrics + baseline. |
+| **W2** | 17.06 – 23.06 | **Baseline approach fully working + first eval numbers.** Register for coaching by **19.06**. | R1 turn loop solid on stubs · R2/R3/R4 harden their modules · R5 run baseline, log results. |
+| **W3** | 24.06 – 30.06 | **Add the comparison approach** (RAG / ReAct / multi-agent) + full evaluation. Coaching session **24.06** — bring questions. | R4 leads the comparison approach · R5 runs the A/B eval + plots · R1 wires LangGraph once agents call the LLM. |
+| **W4** | 01.07 – 07.07 | **Polish, ablations, write report & slides.** Submit presentation by **07.07**. | Everyone writes their section; R5 owns the deck; R1 a final "does it all still run?" check + architecture write-up. |
 | **Present** | 08.07 | Final presentation (mandatory attendance). | Practice run the day before. |
 
 ## Reality check: low cadence → protect the critical path
