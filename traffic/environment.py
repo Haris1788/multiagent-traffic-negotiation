@@ -6,7 +6,7 @@ This is pure Python + numpy — no LLM here, so it's fully testable on its own.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -15,6 +15,7 @@ class Vehicle:
     pos: tuple[int, int]
     goal: tuple[int, int]
     speed: int = 0          # cells moved last turn (for the braking rule)
+    last_move: Move = (0, 0)
     arrived: bool = False
 
 
@@ -35,7 +36,8 @@ class GridIntersection:
         self.size = size
         self.max_turns = max_turns
         self._initial = vehicles or self._default_vehicles()
-        self.state = State(vehicles=[Vehicle(**v.__dict__) for v in self._initial])
+        self.state = State(vehicles=[Vehicle(**v.__dict__)
+                           for v in self._initial])
         self.collisions = 0
 
     @staticmethod
@@ -46,9 +48,43 @@ class GridIntersection:
         ]
 
     def reset(self) -> State:
-        self.state = State(vehicles=[Vehicle(**v.__dict__) for v in self._initial])
+        self.state = State(vehicles=[Vehicle(**v.__dict__)
+                           for v in self._initial])
         self.collisions = 0
         return self.state
+
+    def _is_valid_move(self, move: Move) -> bool:
+        """Allow only 0, 1, or 2 cells along a single axis."""
+        dx, dy = move
+
+        # No diagonal movement
+        if dx != 0 and dy != 0:
+            return False
+
+        # Maximum movement is 2 cells
+        if abs(dx) > 2 or abs(dy) > 2:
+            return False
+
+        return True
+
+    def _apply_braking(self, vehicle: Vehicle, move: Move) -> Move:
+        """Enforce the rule that if a vehicle was moving at speed 2 and now wants to stop, it must first brake to speed 1 for one turn."""
+        requested_speed = max(abs(move[0]), abs(move[1]))
+
+        if vehicle.speed == 2 and requested_speed == 0:
+
+            dx, dy = vehicle.last_move
+
+            if dx > 0:
+                return (1, 0)
+            if dx < 0:
+                return (-1, 0)
+            if dy > 0:
+                return (0, 1)
+            if dy < 0:
+                return (0, -1)
+
+        return move
 
     def step(self, moves: dict[str, Move]) -> State:
         """Apply one move per car. TODO(R2): enforce speed/brake rules + detect crashes."""
@@ -56,12 +92,24 @@ class GridIntersection:
         for v in self.state.vehicles:
             if v.arrived:
                 continue
-            dx, dy = moves.get(v.id, (0, 0))
+            move = moves.get(v.id, (0, 0))
+
+            # Reject invalid moves
+            if not self._is_valid_move(move):
+                move = (0, 0)
+
+            # Apply braking rule
+            move = self._apply_braking(v, move)
+
+            dx, dy = move
+
             nx = max(0, min(self.size - 1, v.pos[0] + dx))
             ny = max(0, min(self.size - 1, v.pos[1] + dy))
             v.pos = (nx, ny)
             if v.pos in occupied:
                 self.collisions += 1   # TODO(R2): refine collision semantics
+            v.last_move = move
+            v.speed = max(abs(dx), abs(dy))
             occupied[v.pos] = v.id
             if v.pos == v.goal:
                 v.arrived = True
