@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+Move = tuple[int, int]  # (dx, dy); magnitude 0,1,2 along a single axis
+
 
 @dataclass
 class Vehicle:
@@ -23,9 +25,6 @@ class Vehicle:
 class State:
     vehicles: list[Vehicle]
     turn: int = 0
-
-
-Move = tuple[int, int]  # (dx, dy); magnitude 0,1,2 along a single axis
 
 
 class GridIntersection:
@@ -87,32 +86,79 @@ class GridIntersection:
         return move
 
     def step(self, moves: dict[str, Move]) -> State:
-        """Apply one move per car. TODO(R2): enforce speed/brake rules + detect crashes."""
-        occupied: dict[tuple[int, int], str] = {}
+        """
+    Simultaneous-move step:
+    1. Validate + apply braking
+    2. Compute all proposed positions first (NO updates yet)
+    3. Resolve collisions
+    4. Commit final state
+    """
+        proposed_positions: dict[str, tuple[int, int]] = {}
+        proposed_moves: dict[str, Move] = {}
+        occupied_targets: dict[tuple[int, int], list[str]] = {}
+
         for v in self.state.vehicles:
             if v.arrived:
                 continue
+
             move = moves.get(v.id, (0, 0))
 
-            # Reject invalid moves
+            # validate move
             if not self._is_valid_move(move):
                 move = (0, 0)
 
-            # Apply braking rule
+            # braking rule
             move = self._apply_braking(v, move)
 
             dx, dy = move
-
             nx = max(0, min(self.size - 1, v.pos[0] + dx))
             ny = max(0, min(self.size - 1, v.pos[1] + dy))
-            v.pos = (nx, ny)
-            if v.pos in occupied:
-                self.collisions += 1   # TODO(R2): refine collision semantics
+
+            proposed_positions[v.id] = (nx, ny)
+            proposed_moves[v.id] = move
+            occupied_targets.setdefault((nx, ny), []).append(v.id)
+
+        # -----------------------------
+        # 2. Resolve collisions
+        # -----------------------------
+        final_positions: dict[str, tuple[int, int]] = {}
+
+        for pos, ids in occupied_targets.items():
+            if len(ids) > 1:
+                # COLLISION EVENT
+                self.collisions += 1
+
+                # SIMPLE RULE: all cars stay in original positions
+                for vid in ids:
+                    original_pos = next(
+                        vehicle.pos
+                        for vehicle in self.state.vehicles
+                        if vehicle.id == vid
+                    )
+                    final_positions[vid] = original_pos
+            else:
+                vid = ids[0]
+                final_positions[vid] = pos
+
+        # -----------------------------
+        # 3. Commit state update
+        # -----------------------------
+        for v in self.state.vehicles:
+            if v.arrived:
+                continue
+
+            if v.id in final_positions:
+                v.pos = final_positions[v.id]
+
+            move = proposed_moves.get(v.id, (0, 0))
+            dx, dy = move
+
             v.last_move = move
             v.speed = max(abs(dx), abs(dy))
-            occupied[v.pos] = v.id
+
             if v.pos == v.goal:
                 v.arrived = True
+
         self.state.turn += 1
         return self.state
 
