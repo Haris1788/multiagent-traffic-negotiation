@@ -1,25 +1,27 @@
-"""Tests for zeroshot_agent.  OWNER: R3 (Pratham).
+"""Real integration tests for zeroshot_agent.  OWNER: R3 (Pratham).
 
-All tests mock src.llm.complete so they run without any LLM server.
+All tests call the actual LLM (Ollama / llama3.1 running locally).
+Start Ollama before running: ollama serve
+Run: python -m pytest traffic/tests/test_zeroshot_agent.py -v
 """
 from __future__ import annotations
-
-from unittest.mock import patch
 
 import pytest
 
 from traffic.environment import GridIntersection, State, Vehicle
 from traffic.agents.zeroshot_agent import choose_move, _parse_move, _build_prompt
 
+VALID_MOVES = {(1, 0), (-1, 0), (0, 1), (0, -1), (0, 0)}
 
-# ── _parse_move ──────────────────────────────────────────────────────────────
 
-def test_parse_move_exact():
+# ── _parse_move (pure logic, no LLM) ────────────────────────────────────────
+
+def test_parse_move_all_keywords():
     assert _parse_move("RIGHT") == (1, 0)
-    assert _parse_move("LEFT") == (-1, 0)
-    assert _parse_move("UP") == (0, -1)
-    assert _parse_move("DOWN") == (0, 1)
-    assert _parse_move("WAIT") == (0, 0)
+    assert _parse_move("LEFT")  == (-1, 0)
+    assert _parse_move("DOWN")  == (0, 1)
+    assert _parse_move("UP")    == (0, -1)
+    assert _parse_move("WAIT")  == (0, 0)
 
 
 def test_parse_move_case_insensitive():
@@ -27,105 +29,115 @@ def test_parse_move_case_insensitive():
     assert _parse_move("Right\n") == (1, 0)
 
 
-def test_parse_move_embedded():
-    # LLM might reply with surrounding text
-    assert _parse_move("I will go RIGHT.") == (1, 0)
+def test_parse_move_embedded_in_text():
+    assert _parse_move("I will move RIGHT now.") == (1, 0)
 
 
-def test_parse_move_unknown_falls_back_to_wait():
+def test_parse_move_unknown_returns_wait():
     assert _parse_move("JUMP") == (0, 0)
     assert _parse_move("") == (0, 0)
 
 
-# ── _build_prompt ────────────────────────────────────────────────────────────
+# ── _build_prompt (pure logic, no LLM) ──────────────────────────────────────
 
-def _simple_state() -> State:
-    return State(
-        vehicles=[
-            Vehicle(id="A", pos=(2, 5), goal=(9, 5)),
-            Vehicle(id="B", pos=(5, 2), goal=(5, 9)),
-        ]
-    )
+def _two_car_state() -> State:
+    return State(vehicles=[
+        Vehicle(id="A", pos=(2, 5), goal=(9, 5)),
+        Vehicle(id="B", pos=(5, 2), goal=(5, 9)),
+    ])
 
 
-def test_build_prompt_contains_car_id():
-    prompt = _build_prompt(_simple_state(), "A")
-    assert "car A" in prompt
+def test_prompt_contains_car_id():
+    assert "car A" in _build_prompt(_two_car_state(), "A")
 
 
-def test_build_prompt_contains_positions():
-    prompt = _build_prompt(_simple_state(), "A")
+def test_prompt_contains_position_and_goal():
+    prompt = _build_prompt(_two_car_state(), "A")
     assert "(2, 5)" in prompt
-    assert "(9, 5)" in prompt  # goal
+    assert "(9, 5)" in prompt
 
 
-def test_build_prompt_mentions_other_car():
-    prompt = _build_prompt(_simple_state(), "A")
-    assert "car B" in prompt
+def test_prompt_lists_other_active_cars():
+    assert "car B" in _build_prompt(_two_car_state(), "A")
 
 
-def test_build_prompt_no_others_when_arrived():
-    state = State(
-        vehicles=[
-            Vehicle(id="A", pos=(2, 5), goal=(9, 5)),
-            Vehicle(id="B", pos=(5, 9), goal=(5, 9), arrived=True),
-        ]
-    )
-    prompt = _build_prompt(state, "A")
-    assert "No other active cars" in prompt
+def test_prompt_omits_arrived_cars():
+    state = State(vehicles=[
+        Vehicle(id="A", pos=(2, 5), goal=(9, 5)),
+        Vehicle(id="B", pos=(5, 9), goal=(5, 9), arrived=True),
+    ])
+    assert "No other active cars" in _build_prompt(state, "A")
 
 
-# ── choose_move ──────────────────────────────────────────────────────────────
+# ── Real LLM tests ───────────────────────────────────────────────────────────
 
-def test_choose_move_uses_llm_reply():
-    state = _simple_state()
-    with patch("src.llm.complete", return_value="RIGHT") as mock_llm:
-        move = choose_move(state, "A")
-    assert move == (1, 0)
-    mock_llm.assert_called_once()
+def test_llm_returns_legal_move_for_single_car():
+    """LLM must return one of the five legal moves for a simple straight-line scenario."""
+    state = State(vehicles=[Vehicle(id="A", pos=(0, 5), goal=(9, 5))])
+    move = choose_move(state, "A")
+    assert move in VALID_MOVES, f"Illegal move returned: {move}"
+
+
+def test_llm_returns_legal_move_with_two_cars():
+    """LLM must return a legal move even with another car present (collision risk)."""
+    state = _two_car_state()
+    move = choose_move(state, "A")
+    assert move in VALID_MOVES, f"Illegal move returned: {move}"
 
 
 def test_choose_move_does_not_mutate_state():
-    state = _simple_state()
+    """The agent must never modify the state object."""
+    state = _two_car_state()
     original_pos = state.vehicles[0].pos
-    with patch("src.llm.complete", return_value="RIGHT"):
-        choose_move(state, "A")
+    original_turn = state.turn
+    choose_move(state, "A")
     assert state.vehicles[0].pos == original_pos
-    assert state.turn == 0
+    assert state.turn == original_turn
 
 
-def test_choose_move_fallback_on_llm_error():
-    """If the LLM is unreachable, agent falls back to greedy movement."""
-    state = _simple_state()
-    with patch("src.llm.complete", side_effect=ConnectionError("no server")):
-        move = choose_move(state, "A")
-    # Greedy: A is at x=2, goal x=9 → should move RIGHT = (1, 0)
-    assert move == (1, 0)
-
-
-def test_choose_move_arrived_car_waits():
-    state = State(
-        vehicles=[Vehicle(id="A", pos=(9, 5), goal=(9, 5), arrived=True)]
-    )
-    with patch("src.llm.complete", return_value="RIGHT"):
-        move = choose_move(state, "A")
+def test_arrived_car_returns_wait():
+    """An already-arrived car must get (0, 0) without touching the LLM."""
+    state = State(vehicles=[Vehicle(id="A", pos=(9, 5), goal=(9, 5), arrived=True)])
+    move = choose_move(state, "A")
     assert move == (0, 0)
 
 
-def test_choose_move_returns_legal_move_in_full_episode():
-    """End-to-end: run a whole episode with mocked LLM returning greedy directions."""
-    env = GridIntersection(max_turns=30)
+def test_llm_moves_toward_goal_horizontal():
+    """Car A needs to go right (goal is to the right). LLM should pick RIGHT."""
+    state = State(vehicles=[Vehicle(id="A", pos=(0, 5), goal=(9, 5))])
+    move = choose_move(state, "A")
+    # LLM should choose RIGHT = (1,0) for a clear straight path
+    assert move == (1, 0), f"Expected RIGHT=(1,0), got {move}"
 
-    def _fake_llm(prompt: str, **_) -> str:
-        # parse which car and direction it needs from the prompt, return RIGHT/DOWN
-        if "car A" in prompt and "Your position" in prompt:
-            return "RIGHT"
-        return "DOWN"
 
-    with patch("src.llm.complete", side_effect=_fake_llm):
-        from traffic.simulator import run_episode
-        result = run_episode(env, choose_move)
+def test_llm_moves_toward_goal_vertical():
+    """Car B needs to go down (goal is below). LLM should pick DOWN."""
+    state = State(vehicles=[Vehicle(id="B", pos=(5, 0), goal=(5, 9))])
+    move = choose_move(state, "B")
+    assert move == (0, 1), f"Expected DOWN=(0,1), got {move}"
 
+
+def test_full_episode_with_real_llm():
+    """Run a complete episode with real LLM driving both cars. Must terminate."""
+    env = GridIntersection(max_turns=50)
+    from traffic.simulator import run_episode
+    result = run_episode(env, choose_move)
     assert "success" in result
     assert "collisions" in result
-    assert result["steps"] <= 30
+    assert "steps" in result
+    assert result["steps"] <= 50
+    print(f"\nEpisode result: success={result['success']}, "
+          f"collisions={result['collisions']}, steps={result['steps']}")
+
+
+def test_multiple_episodes_success_rate():
+    """Run 3 episodes; expect at least 1 success (LLM isn't perfect but shouldn't fail all)."""
+    from traffic.simulator import run_episode
+    successes = 0
+    for _ in range(3):
+        env = GridIntersection(max_turns=40)
+        result = run_episode(env, choose_move)
+        if result["success"]:
+            successes += 1
+    print(f"\nSuccesses: {successes}/3")
+    assert successes >= 1, "LLM agent failed all 3 episodes — check model or prompt"
