@@ -1,0 +1,36 @@
+# --- Secrets ---
+.env
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# --- Data / outputs / models ---
+results/
+**/results/
+chroma_db/
+**/chroma_db/
+*.sqlite3
+repos/
+.cache/
+
+# --- Personal notes, drafts & scratch (not shared) ---
+Misc/
+Doc-Check/
+Learning/
+scratch/
+Reference_PDFs/
+tasks.ps1
+*.local.ps1
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
