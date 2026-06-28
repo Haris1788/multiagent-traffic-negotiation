@@ -21,3 +21,6 @@ LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1")
 
 # API key: leave blank for local servers; only set if your endpoint requires one.
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+
+# Keep local development and tests responsive when no model server is running.
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "2.0"))
