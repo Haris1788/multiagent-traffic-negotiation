@@ -8,14 +8,14 @@ everyone can build **in parallel** today.
 
 | # | Role | Assigned to | Owns (files) | Builds, in parallel |
 |---|------|-------------|--------------|---------------------|
-| **R1** | **Integration Lead** | **Haris** | `traffic/simulator.py`, later the LangGraph graph | Builds the turn loop + the contracts R2–R5 plug into — owns a file like everyone else. Plus a **light** "does it all still run together?" check near deadlines. **Not** a daily reviewer; everyone merges their own work into `dev`, R1 promotes `dev → main`. |
-| **R2** | **Environment Engineer** | **Azeel** | `traffic/environment.py` | The grid, kinematics (1–2 cells/turn, no diagonals, 1 turn to brake), and collision rules. Pure Python, no LLM. |
-| **R3** | **Zero-Shot Agent (baseline)** | **Pratham** | `traffic/agents/zeroshot_agent.py` | The direct-prompt driver + move parsing — our control approach. |
-| **R4** | **ReAct Agent (comparison)** | **Darshan** | `traffic/agents/react_agent.py` | The Thought→Action→Observation reasoning loop + its trace — our main hypothesis. |
-| **R5** | **Evaluation & Results Lead** | **Kuldeep** | `traffic/evaluate.py`, metrics, plots, the final slide deck | The 50–100-episode sweep, the comparison table/plots, and the report. |
+| **R1** | **Integration Lead** | **Haris** | `traffic/simulator.py`, later the LangGraph graph | Builds the turn loop + the contracts R2–R5 plug into — owns a file like everyone else. Plus a **light** "does it all still run together?" check near deadlines. **Not** a daily reviewer; everyone pushes their own work. |
+| **R2** | **Environment Engineer** | _(pick at kickoff)_ | `traffic/environment.py` | The grid, kinematics (1–2 cells/turn, no diagonals, 1 turn to brake), and collision rules. Pure Python, no LLM. |
+| **R3** | **Zero-Shot Agent (baseline)** | _(pick at kickoff)_ | `traffic/agents/zeroshot_agent.py` | The direct-prompt driver + move parsing — our control approach. |
+| **R4** | **ReAct Agent (comparison)** | _(pick at kickoff)_ | `traffic/agents/react_agent.py` | The Thought→Action→Observation reasoning loop + its trace — our main hypothesis. |
+| **R5** | **Evaluation & Results Lead** | _(pick at kickoff)_ | `traffic/evaluate.py`, metrics, plots, the final slide deck | The 50–100-episode sweep, the comparison table/plots, and the report. |
 
-> Roles assigned (21.06): R1 Haris · R2 Azeel · R3 Pratham · R4 Darshan · R5 Kuldeep.
-> R2's environment unblocks everyone, so prioritize it in W1.
+> Assign names to R1–R5 in your first meeting. Tip: strongest integrator → R1; whoever
+> likes data/plots → R5. R2's environment unblocks everyone, so prioritize it in W1.
 
 ## How we work (every week)
 
@@ -24,10 +24,8 @@ everyone can build **in parallel** today.
 2. **Discuss → align → assign.** We agree the next week's goal for each person before
    leaving the meeting.
 3. **Work in parallel** against the agreed interfaces. Small, frequent commits.
-4. **Work on your own branch → merge into `dev`.** Pull `dev` first, run
-   `python -m pytest` (green is the gate), then push your branch and merge into `dev`.
-   CI re-runs the tests on `dev`. R1 promotes `dev → main` once green. `dev` is the
-   default branch; `main` stays demo-able. No mandatory review.
+4. **Everyone pushes their own work directly to `main`.** Pull first, run
+   `python -m pytest`, then push — green tests are the only gate. No mandatory review.
 
 ## 1-month timeline (4 working weeks)
 

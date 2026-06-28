@@ -23,6 +23,6 @@ pytest
 # --- Optional / per-topic (uncomment only if needed; still all free) ---
 # faiss-cpu              # alternative vector store
 # sentence-transformers  # local embeddings (large; pulls torch)
-matplotlib             # plots (traffic paths, metric bars)
+# matplotlib             # plots (traffic paths, metric bars)
 # pygame                 # traffic negotiation visualizer
 # gitpython              # GitHub issue agent: read repos
