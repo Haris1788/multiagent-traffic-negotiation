@@ -10,13 +10,15 @@ no agent code changes.
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 import httpx
 
 from src import config
 
 
 def complete(prompt: str, *, model: str | None = None, system: str | None = None,
-             max_tokens: int = 1024) -> str:
+             max_tokens: int = 1024, timeout: float | None = None) -> str:
     """Send a prompt to the configured LLM backend and return the text reply."""
     messages: list[dict] = []
     if system:
@@ -35,7 +37,21 @@ def complete(prompt: str, *, model: str | None = None, system: str | None = None
             "max_tokens": max_tokens,
         },
         headers=headers,
-        timeout=120,
+        timeout=timeout or config.LLM_TIMEOUT_SECONDS,
     )
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
+
+
+@lru_cache(maxsize=1)
+def is_available(timeout: float = 0.5) -> bool:
+    """Return whether the configured OpenAI-compatible backend responds quickly."""
+    try:
+        resp = httpx.get(
+            f"{config.LLM_BASE_URL.rstrip('/')}/models",
+            headers={"Authorization": f"Bearer {config.LLM_API_KEY}"} if config.LLM_API_KEY else {},
+            timeout=timeout,
+        )
+        return resp.status_code < 500
+    except Exception:
+        return False
