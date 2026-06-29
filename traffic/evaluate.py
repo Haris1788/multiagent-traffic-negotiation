@@ -1,48 +1,71 @@
-"""Evaluation for the traffic topic.  OWNER: R5 (Evaluation Lead).
-
-Runs N episodes per approach and aggregates success / collisions / steps.
-"""
-from __future__ import annotations
-
-import argparse
-
-from traffic.agents.react_agent import choose_move as react_move
-from traffic.agents.zeroshot_agent import choose_move as zeroshot_move
-from traffic.environment import GridIntersection
+import csv
 from traffic.simulator import run_episode
+from traffic.environment import GridIntersection
+from traffic.agents.zeroshot_agent import choose_move as zero_agent
+from traffic.agents.react_agent import choose_move as react_agent
 
-APPROACHES = {
-    "zeroshot": zeroshot_move,
-    "react": react_move,
-}
+NUM_EPISODES = 100
 
 
-def evaluate(approach: str, episodes: int) -> dict:
-    agent_fn = APPROACHES[approach]
-    results = [run_episode(GridIntersection(), agent_fn) for _ in range(episodes)]
-    n = len(results)
-    return {
-        "approach": approach,
-        "episodes": n,
-        "success_rate": sum(r["success"] for r in results) / n,
-        "avg_collisions": sum(r["collisions"] for r in results) / n,
-        "avg_steps": sum(r["steps"] for r in results) / n,
+def evaluate(agent_fn, agent_name):
+
+    env = GridIntersection()
+
+    rows = []
+
+    successes = 0
+    collisions = 0
+    total_steps = 0
+
+    for episode in range(1, NUM_EPISODES + 1):
+
+        result = run_episode(env, agent_fn)
+
+        rows.append({
+            "Episode": episode,
+            "Agent": agent_name,
+            "Success": result["success"],
+            "Collisions": result["collisions"],
+            "Steps": result["steps"]
+        })
+
+        successes += int(result["success"])
+        collisions += result["collisions"]
+        total_steps += result["steps"]
+
+    return rows, {
+        "Agent": agent_name,
+        "Success Rate": successes / NUM_EPISODES,
+        "Collision Count": collisions,
+        "Average Steps": total_steps / NUM_EPISODES,
     }
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(description="Evaluate traffic-negotiation approaches.")
-    p.add_argument("--approach")
-    p.add_argument("--episodes", type=int, default=50)
-    p.add_argument("--list", action="store_true")
-    args = p.parse_args()
+zero_rows, zero_summary = evaluate(zero_agent, "Zero-Shot")
+react_rows, react_summary = evaluate(react_agent, "ReAct")
 
-    if args.list or not args.approach:
-        print("Approaches:", ", ".join(APPROACHES))
-        return
-    summary = evaluate(args.approach, args.episodes)
-    print(summary)
+all_rows = zero_rows + react_rows
 
+with open("results.csv", "w", newline="") as f:
+    writer = csv.DictWriter(
+        f,
+        fieldnames=["Episode", "Agent", "Success", "Collisions", "Steps"],
+    )
+    writer.writeheader()
+    writer.writerows(all_rows)
 
-if __name__ == "__main__":
-    main()
+with open("summary.csv", "w", newline="") as f:
+    writer = csv.DictWriter(
+        f,
+        fieldnames=[
+            "Agent",
+            "Success Rate",
+            "Collision Count",
+            "Average Steps",
+        ],
+    )
+    writer.writeheader()
+    writer.writerow(zero_summary)
+    writer.writerow(react_summary)
+
+print("Evaluation completed.")

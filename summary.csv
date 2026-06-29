@@ -1,0 +1,3 @@
+Agent,Success Rate,Collision Count,Average Steps
+Zero-Shot,1.0,100,9.0
+ReAct,1.0,100,9.0
