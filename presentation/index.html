@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Multi-Agent Traffic Negotiation — ReAct vs Zero-Shot · TU Clausthal</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root{
+  --tuc-green:#0B8A3C;--tuc-green-dark:#065C28;--tuc-green-deep:#04331A;
+  --go:#2FB457;--amber:#F2A81D;--red:#E4342B;--blue:#2563EB;
+  --ink:#122019;--muted:#4C5D53;--faint:#7C8B82;
+  --bg:#F5F8F4;--card:#FFFFFF;--line:#DDE7DF;--line-strong:#C3D2C6;
+  --shadow:0 18px 50px -22px rgba(6,60,26,.35);--shadow-sm:0 8px 24px -14px rgba(6,60,26,.30);
+  --serif:'Crimson Pro',Georgia,serif;--sans:'Atkinson Hyperlegible',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--sans);color:var(--ink);
+  background:radial-gradient(1200px 700px at 85% -10%,rgba(11,138,60,.10),transparent 60%),
+    radial-gradient(900px 600px at -10% 110%,rgba(242,168,29,.08),transparent 55%),var(--bg);
+  overflow:hidden;-webkit-font-smoothing:antialiased;}
+
+.deck{position:fixed;inset:0}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;
+  padding:clamp(28px,4.2vw,72px) clamp(34px,6vw,104px);
+  opacity:0;visibility:hidden;transform:translateY(14px) scale(.992);
+  transition:opacity .5s ease,transform .55s cubic-bezier(.22,1,.36,1),visibility .55s;overflow:hidden;}
+.slide.active{opacity:1;visibility:visible;transform:none;z-index:2}
+.slide.prev{transform:translateY(-14px) scale(.992)}
+.slide [data-anim]{opacity:0;transform:translateY(18px)}
+.slide.active [data-anim]{animation:rise .6s cubic-bezier(.22,1,.36,1) forwards}
+.slide.active [data-anim="1"]{animation-delay:.06s}
+.slide.active [data-anim="2"]{animation-delay:.15s}
+.slide.active [data-anim="3"]{animation-delay:.24s}
+.slide.active [data-anim="4"]{animation-delay:.33s}
+.slide.active [data-anim="5"]{animation-delay:.42s}
+.slide.active [data-anim="6"]{animation-delay:.51s}
+@keyframes rise{to{opacity:1;transform:none}}
+
+.eyebrow{font-family:var(--sans);font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  font-size:clamp(11px,.82vw,13px);color:var(--tuc-green);display:inline-flex;align-items:center;gap:.6em;margin-bottom:.7rem}
+.eyebrow::before{content:"";width:26px;height:2px;background:var(--tuc-green);border-radius:2px}
+h1{font-family:var(--serif);font-weight:700;line-height:1.02;letter-spacing:-.01em;font-size:clamp(34px,5.4vw,74px);color:var(--ink)}
+h2{font-family:var(--serif);font-weight:700;line-height:1.05;letter-spacing:-.01em;font-size:clamp(28px,3.6vw,50px);color:var(--ink);margin-bottom:.2em}
+h3{font-family:var(--serif);font-weight:600;font-size:clamp(19px,1.7vw,26px);color:var(--tuc-green-dark)}
+.lead{font-size:clamp(16px,1.35vw,21px);line-height:1.55;color:var(--muted);max-width:60ch}
+p{line-height:1.6}
+.mono{font-family:var(--mono)} strong{color:var(--ink)} .accent{color:var(--tuc-green-dark)}
+.slide-head{margin-bottom:clamp(14px,1.8vw,26px);flex:0 0 auto}
+.slide-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:center}
+
+.grid{display:grid;gap:clamp(14px,1.4vw,22px)}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+.g-7-5{grid-template-columns:1.35fr 1fr}.g-5-7{grid-template-columns:1fr 1.35fr}
+.two-col-fill{display:grid;grid-template-columns:1fr 1fr;gap:clamp(16px,2vw,30px);align-items:center;height:100%}
+.fill{height:100%;display:flex;flex-direction:column;justify-content:center;gap:1rem}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(16px,1.5vw,24px);box-shadow:var(--shadow-sm)}
+.card.soft{background:linear-gradient(180deg,#FFFFFF,#F7FBF7)}
+.card.green{background:linear-gradient(160deg,var(--tuc-green-dark),var(--tuc-green-deep));color:#EAF7EE;border-color:transparent}
+.card.green h3{color:#CDEBD6}.card.green .lead,.card.green p{color:#D6EEDD}
+
+.pill{display:inline-flex;align-items:center;gap:.5em;font-size:clamp(11px,.85vw,13px);font-weight:700;letter-spacing:.02em;
+  padding:.4em .8em;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--muted)}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:var(--go)}
+.pill.done{border-color:#BEE6C8;background:#EDF9F0;color:var(--tuc-green-dark)}
+.pill.prog{border-color:#F6E2B0;background:#FDF6E6;color:#8A6410}.pill.prog .dot{background:var(--amber)}
+
+.kv{display:flex;flex-direction:column;gap:.15em}
+.k{font-size:clamp(11px,.82vw,13px);font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.v{font-family:var(--serif);font-size:clamp(20px,2vw,30px);font-weight:700;color:var(--ink)}
+
+ul.clean{list-style:none;display:flex;flex-direction:column;gap:.55em}
+ul.clean li{position:relative;padding-left:1.5em;line-height:1.5;color:var(--muted);font-size:clamp(14px,1.15vw,17px)}
+ul.clean li::before{content:"";position:absolute;left:0;top:.55em;width:9px;height:9px;border-radius:2px;background:var(--tuc-green);transform:rotate(45deg)}
+ul.clean li b,ul.clean li strong{color:var(--ink)}
+.tag{font-family:var(--mono);font-size:.86em;background:#E9F4EC;color:var(--tuc-green-dark);padding:.12em .45em;border-radius:6px;border:1px solid #D2E9D8}
+
+/* flow chart */
+.flowchart{display:flex;flex-direction:column;gap:5px}
+.fstep{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 16px;box-shadow:var(--shadow-sm)}
+.fstep b{font-family:var(--serif);font-size:clamp(15px,1.35vw,19px);color:var(--ink)}
+.fstep p{font-size:13px;color:var(--muted);margin-top:1px;line-height:1.4}
+.fstep.result{border-color:var(--tuc-green);background:linear-gradient(180deg,#F2FBF4,#fff)}
+.fn-num{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--tuc-green);color:#fff;display:grid;place-items:center;font-family:var(--serif);font-weight:700;font-size:16px}
+.fstep.result .fn-num{background:var(--go)}
+.farrow{color:var(--tuc-green);font-size:16px;text-align:center;line-height:1}
+.farrow.loop{font-family:var(--mono);font-size:12px;color:#8A6410;background:#FDF6E6;border:1px dashed #F0D48A;border-radius:999px;padding:6px 14px;margin:3px auto;font-weight:700;display:inline-block}
+
+/* mini step chips */
+.chips{display:flex;flex-direction:column;gap:8px}
+.chip{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 15px;box-shadow:var(--shadow-sm)}
+.chip .n{width:26px;height:26px;border-radius:8px;background:#EAF4EC;color:var(--tuc-green-dark);display:grid;place-items:center;font-weight:700;font-family:var(--serif)}
+.chip b{font-family:var(--serif);font-size:clamp(15px,1.3vw,18px)}
+.chip span{font-size:13px;color:var(--muted)}
+
+.imgph{display:flex;align-items:center;justify-content:center;min-height:clamp(230px,36vh,380px);border-style:dashed;border-width:2px;border-color:var(--line-strong);background:repeating-linear-gradient(45deg,#fff,#fff 12px,#FAFCFA 12px,#FAFCFA 24px)}
+.imgph-inner{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--faint);text-align:center}
+.imgph-inner span{font-family:var(--serif);font-size:clamp(16px,1.6vw,20px);font-weight:600;color:var(--muted)}
+.imgph-inner small{font-family:var(--mono);font-size:11px}
+
+table.t{width:100%;border-collapse:collapse;font-size:clamp(13px,1.08vw,16px)}
+table.t th,table.t td{text-align:left;padding:.8em .9em;border-bottom:1px solid var(--line)}
+table.t thead th{font-family:var(--sans);font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+table.t td.metric{width:44%}
+
+.title-wrap{flex:1;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:2}
+.brandbar{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;color:var(--tuc-green-dark)}
+.brand .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(150deg,var(--tuc-green),var(--tuc-green-dark));display:grid;place-items:center;color:#fff;box-shadow:var(--shadow-sm)}
+.brand small{display:block;font-weight:400;color:var(--faint);font-size:12px;letter-spacing:.02em}
+.title-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:1.4rem}
+.foot-brand{font-size:12px;color:var(--faint);font-family:var(--mono)}
+.vs{font-family:var(--serif);font-style:italic;color:var(--tuc-green)}
+.signal{display:inline-flex;gap:7px;padding:7px 11px;border-radius:999px;background:#0C231A;align-items:center}
+.signal i{width:13px;height:13px;border-radius:50%;opacity:.32}
+.signal i.r{background:var(--red)}.signal i.a{background:var(--amber)}.signal i.g{background:var(--go)}
+.signal.live i.g{opacity:1;box-shadow:0 0 12px var(--go)}
+
+.wm{position:absolute;right:clamp(30px,5vw,90px);top:clamp(24px,3.5vw,56px);font-family:var(--serif);font-weight:700;font-size:clamp(60px,9vw,150px);color:#EAF1EA;z-index:0;line-height:.8;user-select:none}
+
+.progress{position:fixed;left:0;top:0;height:3px;background:linear-gradient(90deg,var(--tuc-green),var(--go));z-index:50;transition:width .45s ease}
+.chrome{position:fixed;bottom:16px;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(20px,4vw,44px);z-index:40;pointer-events:none}
+.nav{display:flex;align-items:center;gap:10px;pointer-events:auto}
+.nav button{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:#fff;color:var(--tuc-green-dark);cursor:pointer;display:grid;place-items:center;box-shadow:var(--shadow-sm);transition:transform .15s,background .2s,color .2s}
+.nav button:hover{background:var(--tuc-green-dark);color:#fff}
+.nav button:focus-visible{outline:3px solid #A7E3B9;outline-offset:2px}
+.counter{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:52px;text-align:center}
+.hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--faint);font-family:var(--mono);z-index:39;pointer-events:none;transition:opacity .5s}
+
+@media print{
+  @page{size:1280px 720px;margin:0}
+  html,body{overflow:visible;background:#fff}
+  .chrome,.progress,.hint{display:none!important}
+  .deck{position:static}
+  .slide{position:relative;inset:auto;opacity:1!important;visibility:visible!important;transform:none!important;width:1280px;height:720px;page-break-after:always;break-after:page;box-shadow:none}
+  .slide [data-anim]{opacity:1!important;transform:none!important;animation:none!important}
+}
+@media (prefers-reduced-motion:reduce){.slide,.slide.active [data-anim]{transition:none;animation:none}.slide [data-anim]{opacity:1;transform:none}}
+@media (max-width:820px){.g2,.g3,.g-7-5,.g-5-7,.two-col-fill{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+
+  <!-- ==================== 1 · TITLE ==================== -->
+  <section class="slide active">
+    <div class="brandbar" data-anim="1">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 20V8l8-5 8 5v12" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.2" fill="#fff"/></svg></span>
+        <div>TU Clausthal · ISSE / CORE<small>From Transformers to LLMs — Foundations of Generative AI</small></div>
+      </div>
+      <div class="signal live" aria-hidden="true"><i class="r"></i><i class="a"></i><i class="g"></i></div>
+    </div>
+
+    <div class="title-wrap">
+      <div class="eyebrow" data-anim="2">Project</div>
+      <h1 data-anim="3">Multi-Agent Traffic<br>Negotiation Simulator</h1>
+      <div class="title-meta" data-anim="5" style="margin-top:1.8rem">
+        <span class="pill"><span class="dot"></span>2–4 self-driving cars</span>
+        <span class="pill"><span class="dot" style="background:var(--amber)"></span>10×10 grid intersection</span>
+        <span class="pill"><span class="dot" style="background:var(--blue)"></span>Team of 5</span>
+      </div>
+    </div>
+
+    <div class="brandbar" data-anim="6" style="border-top:1px solid var(--line);padding-top:16px">
+      <div class="foot-brand">Foundations of Generative AI · Group Project</div>
+      <div class="foot-brand">TU Clausthal · ISSE / CORE</div>
+    </div>
+  </section>
+
+  <!-- ==================== 2 · AGENDA ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">00</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">Agenda</div><h2>What we'll walk through</h2></div>
+    <div class="slide-body">
+      <div class="grid g3">
+        <div class="card soft" data-anim="2"><h3>01 · Motivation</h3><p class="lead" style="font-size:15px">Why intersections are a genuinely hard problem.</p></div>
+        <div class="card soft" data-anim="2"><h3>02 · The Goal</h3><p class="lead" style="font-size:15px">The question we set out to answer.</p></div>
+        <div class="card soft" data-anim="3"><h3>03 · Architecture</h3><p class="lead" style="font-size:15px">One world, one loop, and what each part does.</p></div>
+        <div class="card soft" data-anim="3"><h3>04 · The Two Drivers</h3><p class="lead" style="font-size:15px">Zero-Shot instinct vs. ReAct reasoning.</p></div>
+        <div class="card soft" data-anim="4"><h3>05 · Evaluation</h3><p class="lead" style="font-size:15px">How the two approaches are compared.</p></div>
+        <div class="card soft" data-anim="4"><h3>06 · Summary &amp; Limitations</h3><p class="lead" style="font-size:15px">Where the project stands, honestly.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 3 · MOTIVATION ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">01</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">Motivation · Why this problem</div><h2>Intersections are where autonomy gets hard</h2></div>
+    <div class="slide-body">
+      <div class="two-col-fill">
+        <div class="fill">
+          <p class="lead" data-anim="2">A four-way intersection has <strong>no traffic light and no central controller</strong> — just several cars that each want to cross, right now, without crashing. It is the classic <strong>multi-agent negotiation</strong> problem.</p>
+          <ul class="clean" data-anim="3">
+            <li><b>Spatial reasoning is the bottleneck.</b> Language models are strong with words, but reasoning about positions, directions and timing is exactly where they slip.</li>
+            <li><b>Instinct fails under pressure.</b> "Just head for the goal" ignores who else is arriving at the same spot on the same turn.</li>
+            <li><b>Safety is all-or-nothing.</b> One wrong step is a collision — there's no partial credit on the road.</li>
+          </ul>
+        </div>
+        <div class="card green" data-anim="4">
+          <div class="eyebrow" style="color:#9FE0B2">The gap we target</div>
+          <h3 style="font-size:clamp(20px,2vw,30px);color:#fff;line-height:1.15;margin:.3em 0 .5em">A model answering on instinct will happily drive two cars into the same cell.</h3>
+          <p>Real self-driving systems solve this with hand-built planners. We ask a sharper question: <strong style="color:#fff">can the way we prompt the model alone</strong> turn it into a competent negotiator?</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 4 · GOAL ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">02</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">The Goal · Research question</div><h2>Does explicit reasoning make a safer driver?</h2></div>
+    <div class="slide-body">
+      <div class="card soft" data-anim="2" style="text-align:center;padding:clamp(24px,3vw,44px)">
+        <p style="font-family:var(--serif);font-style:italic;font-size:clamp(20px,2.5vw,34px);line-height:1.3;color:var(--ink);max-width:26ch;margin:0 auto">
+          “Does forcing a model to reason <span class="accent">step-by-step</span> let it handle spatial constraints it fails at when answering <span style="color:var(--red)">instinctively</span>?”
+        </p>
+      </div>
+      <div class="grid g3" style="margin-top:clamp(14px,1.6vw,24px)">
+        <div class="card" data-anim="3"><div class="kv"><span class="k">Hold fixed</span><span class="v">The world</span></div><p class="lead" style="font-size:14px;margin-top:.4em">The same grid, rules and scoring for both approaches.</p></div>
+        <div class="card" data-anim="4"><div class="kv"><span class="k">Change</span><span class="v">The driver</span></div><p class="lead" style="font-size:14px;margin-top:.4em">Only the decision style changes — instinct or reasoning.</p></div>
+        <div class="card" data-anim="5"><div class="kv"><span class="k">Measure</span><span class="v">Everything</span></div><p class="lead" style="font-size:14px;margin-top:.4em">Success, collisions and speed — over many repeated runs.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 5 · ARCHITECTURE (flow) ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">03</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">How the system works · The big picture</div><h2>One intersection, one repeating loop</h2></div>
+    <div class="slide-body">
+      <div class="g-7-5 grid" style="align-items:center">
+        <div class="flowchart" data-anim="2">
+          <div class="fstep"><span class="fn-num">1</span><div><b>Set up the intersection</b><p>2–4 cars are placed on the grid, each with a starting point and a goal exit.</p></div></div>
+          <div class="farrow">↓</div>
+          <div class="fstep"><span class="fn-num">2</span><div><b>Each car's driver decides a move</b><p>Given what it can see, every car picks its next step — go, speed up, turn, or wait.</p></div></div>
+          <div class="farrow">↓</div>
+          <div class="fstep"><span class="fn-num">3</span><div><b>The world applies the moves &amp; enforces the rules</b><p>Speed limits, no diagonals and braking distance — illegal moves are rejected.</p></div></div>
+          <div class="farrow">↓</div>
+          <div class="fstep"><span class="fn-num">4</span><div><b>Check for collisions &amp; arrivals</b><p>Two cars in one cell counts as a collision; a car on its goal has arrived.</p></div></div>
+          <div style="text-align:center"><span class="farrow loop">↺ repeat every turn — until all cars exit or time runs out</span></div>
+          <div class="fstep result"><span class="fn-num">✓</span><div><b>Score the run</b><p>Did everyone arrive safely? How many collisions? How many turns did it take?</p></div></div>
+        </div>
+        <div class="card green" data-anim="3">
+          <div class="eyebrow" style="color:#9FE0B2">The one thing we change</div>
+          <h3 style="color:#fff;font-size:clamp(19px,1.9vw,27px);line-height:1.2;margin:.2em 0 .5em">Two interchangeable drivers.</h3>
+          <p>Everything else stays <b style="color:#fff">exactly the same</b> — the same grid, rules and scoring. We only swap the "brain" that decides each move:</p>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:1rem">
+            <div style="background:rgba(255,255,255,.10);border-radius:12px;padding:12px 14px"><b style="color:#fff">Zero-Shot</b><br><span style="font-size:14px;color:#D6EEDD">Answers on instinct — in a single shot.</span></div>
+            <div style="background:rgba(255,255,255,.10);border-radius:12px;padding:12px 14px"><b style="color:#fff">ReAct</b><br><span style="font-size:14px;color:#D6EEDD">Reasons step-by-step before it moves.</span></div>
+          </div>
+          <p style="margin-top:1rem;font-size:14px">Because only the driver changes, any difference in the score comes from the reasoning — nothing else.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 6 · THE WORLD ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">03</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">The simulation · The world the cars live in</div><h2>A grid intersection with real rules</h2></div>
+    <div class="slide-body">
+      <div class="g-5-7 grid" style="align-items:center">
+        <div class="fill" data-anim="2" style="gap:.9rem">
+          <ul class="clean">
+            <li>A <b>10×10 grid</b> forming a four-way intersection — no traffic light, no central controller.</li>
+            <li><b>2–4 cars</b>, each with a fixed start and a goal exit on the far side.</li>
+            <li>Every turn, all cars move <b>at the same time</b>, then the world checks what happened.</li>
+            <li>The world is <b>exact and predictable</b> — it never guesses, so every run is repeatable.</li>
+          </ul>
+        </div>
+        <div class="card green" data-anim="3">
+          <div class="eyebrow" style="color:#9FE0B2">The rules of the road</div>
+          <ul class="clean" style="gap:.7em">
+            <li style="color:#D6EEDD"><b style="color:#fff">Move 1 or 2 cells per turn</b> — straight only, never diagonally.</li>
+            <li style="color:#D6EEDD"><b style="color:#fff">A fast car can't stop dead</b> — it must slow down first, like real braking.</li>
+            <li style="color:#D6EEDD"><b style="color:#fff">Two cars, one cell = a collision</b> — and it is counted against the run.</li>
+            <li style="color:#D6EEDD"><b style="color:#fff">Illegal moves are simply rejected</b> by the world.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 7 · ZERO-SHOT ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">04</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">Approach 1 · The baseline</div><h2>Zero-Shot: decide on instinct</h2></div>
+    <div class="slide-body">
+      <div class="g-5-7 grid" style="align-items:center">
+        <div class="fill" data-anim="2" style="gap:.9rem">
+          <div><span class="pill done"><span class="dot"></span>Baseline · our control</span></div>
+          <ul class="clean">
+            <li>The car is shown the grid, its goal and the other cars — then <b>asked directly</b> for its next move.</li>
+            <li><b>One question, one answer</b> — no explanation, no deliberation.</li>
+            <li>It answers the natural question: how well can a model drive on <b>gut feeling alone</b>?</li>
+          </ul>
+        </div>
+        <div class="card soft" data-anim="3">
+          <div class="eyebrow">How it decides</div>
+          <div class="chips" style="margin-top:.3rem">
+            <div class="chip"><span class="n">1</span><div><b>Sees the situation</b><br><span>positions, its goal, and the other cars</span></div></div>
+            <div class="chip"><span class="n">2</span><div><b>Is asked "what's your move?"</b><br><span>a single, direct question</span></div></div>
+            <div class="chip"><span class="n">3</span><div><b>Answers in one word</b><br><span>go, speed up, turn, or wait</span></div></div>
+            <div class="chip"><span class="n">4</span><div><b>The car moves</b><br><span>no reasoning in between</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 8 · ReAct ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">04</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">Approach 2 · The comparison</div><h2>ReAct: reason first, then move</h2></div>
+    <div class="slide-body">
+      <div class="g-5-7 grid" style="align-items:center">
+        <div class="fill" data-anim="2" style="gap:.9rem">
+          <div><span class="pill done"><span class="dot"></span>Structured reasoning</span></div>
+          <ul class="clean">
+            <li>Before choosing, the car <b>thinks about the other cars</b> and the risk of a crash.</li>
+            <li>It follows a simple pattern — a <b>thought</b>, an <b>action</b>, then an <b>observation</b> of the result.</li>
+            <li>Same task, same rules: the <b>only</b> change is that it reasons before it commits.</li>
+          </ul>
+        </div>
+        <div class="card soft" data-anim="3">
+          <div class="eyebrow">A single decision, out loud</div>
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:.4rem">
+            <div style="border-left:3px solid var(--tuc-green);padding-left:14px"><b style="font-family:var(--serif);color:var(--tuc-green-dark);font-size:18px">Thought</b><br><span style="color:var(--muted)">The other car is heading down; if I speed up, we'd meet in the middle.</span></div>
+            <div style="border-left:3px solid var(--amber);padding-left:14px"><b style="font-family:var(--serif);color:#8A6410;font-size:18px">Action</b><br><span style="color:var(--muted)">Move one step — carefully — instead of two.</span></div>
+            <div style="border-left:3px solid var(--blue);padding-left:14px"><b style="font-family:var(--serif);color:var(--blue);font-size:18px">Observation</b><br><span style="color:var(--muted)">The path is clear now; the other car passes first. No conflict.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 9 · SIMULATOR UI ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">UI</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">The simulator · Watching it happen</div><h2>The negotiation, turn by turn</h2></div>
+    <div class="slide-body">
+      <div class="g-7-5 grid" style="align-items:center">
+        <div class="card imgph" data-anim="2">
+          <div class="imgph-inner">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.2" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="9.5" r="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M4 17l4.5-4.5 3.5 3.5 3-3L20 16.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Simulator screenshot</span>
+            <small>to be added</small>
+          </div>
+        </div>
+        <div class="fill" data-anim="3" style="gap:.9rem">
+          <ul class="clean">
+            <li>A <b>live grid</b> shows each car's position and its goal, updating every turn.</li>
+            <li>You can watch each car <b>decide, move, and either pass safely or collide</b>.</li>
+            <li>Collisions flash red; cars that reach their goal turn green.</li>
+            <li>Each run ends in a clear <b>success</b> or a <b>time-out</b>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 10 · ORCHESTRATION ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">03</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">Under the hood · How a run is driven</div><h2>Coordinating the cars, turn by turn</h2></div>
+    <div class="slide-body">
+      <div class="g-7-5 grid" style="align-items:center">
+        <div class="fill" data-anim="2" style="gap:.9rem">
+          <div><span class="pill done"><span class="dot"></span>Built with LangGraph</span></div>
+          <ul class="clean">
+            <li>Each turn, every active car is <b>asked for its move</b>, the moves are <b>applied together</b>, and the world is <b>checked</b> — then it repeats.</li>
+            <li>The loop runs until <b>all cars arrive</b> or <b>time runs out</b>.</li>
+            <li>The whole loop is organised as a <b>LangGraph workflow</b> — a state graph where each stage (decide → move → check) is an explicit, reliable step.</li>
+          </ul>
+        </div>
+        <div class="card soft" data-anim="3">
+          <div class="eyebrow">The LangGraph loop, one turn at a time</div>
+          <div class="chips" style="margin-top:.3rem">
+            <div class="chip"><span class="n">1</span><div><b>Decide</b><br><span>each car chooses its next move</span></div></div>
+            <div class="chip"><span class="n">2</span><div><b>Move</b><br><span>the world applies every move at once</span></div></div>
+            <div class="chip"><span class="n">3</span><div><b>Check</b><br><span>collisions counted, arrivals marked</span></div></div>
+          </div>
+          <div style="text-align:center;margin-top:10px"><span class="farrow loop">↺ back to Decide — until the run ends</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 11 · EVALUATION ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">05</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">Evaluation · How we compare the two drivers</div><h2>Letting the numbers decide</h2></div>
+    <div class="slide-body">
+      <div class="g-5-7 grid" style="align-items:center">
+        <div class="fill" data-anim="2" style="gap:.8rem">
+          <h3>What we measure</h3>
+          <ul class="clean">
+            <li><b>Success rate</b> — the share of runs where every car reaches its exit.</li>
+            <li><b>Average collisions</b> — how often cars crash, per run.</li>
+            <li><b>Average time-steps</b> — how quickly they clear the intersection.</li>
+            <li>The <b>same runs</b> are played by both drivers, so the comparison is fair.</li>
+          </ul>
+        </div>
+        <div class="card" data-anim="3">
+          <div class="eyebrow">Zero-Shot vs. ReAct</div>
+          <table class="t">
+            <thead><tr><th class="metric">Metric</th><th>Zero-Shot</th><th>ReAct</th></tr></thead>
+            <tbody>
+              <tr><td class="metric"><b>Success rate</b></td><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td class="metric"><b>Avg. collisions</b></td><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td class="metric"><b>Avg. time-steps</b></td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 12 · SUMMARY / CONCLUSION / LIMITATIONS ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">06</span>
+    <div class="slide-head" data-anim="1"><div class="eyebrow">Summary · Conclusion · Limitations</div><h2>Where the project stands</h2></div>
+    <div class="slide-body">
+      <div class="grid g3" style="align-items:stretch">
+        <div class="card soft" data-anim="2">
+          <h3>Summary</h3>
+          <ul class="clean" style="margin-top:.6em">
+            <li>A realistic grid intersection with real movement rules and collisions.</li>
+            <li>Two interchangeable drivers — instinct-based and reasoning-based — behind one identical setup.</li>
+            <li>A live visual demo, plus a fair way to score and compare every run.</li>
+          </ul>
+        </div>
+        <div class="card soft" data-anim="3">
+          <h3>Conclusion</h3>
+          <ul class="clean" style="margin-top:.6em">
+            <li>A clean, controlled comparison — only the reasoning strategy changes.</li>
+            <li>The design isolates the effect of reasoning from every other factor.</li>
+            <li>The final results will show whether reasoning genuinely beats instinct here.</li>
+          </ul>
+        </div>
+        <div class="card soft" data-anim="4">
+          <h3>Limitations</h3>
+          <ul class="clean" style="margin-top:.6em">
+            <li><b>Toy environment.</b> A small 10×10, turn-based grid leaves out continuous motion, real vehicle dynamics, sensors and pedestrians — so results shouldn't be read as claims about real-world driving.</li>
+            <li><b>Narrow, noisy evidence.</b> Only 2–4 cars at a single intersection, driven by one free local model whose answers vary run to run; with a limited number of runs, the numbers are indicative rather than statistically strong.</li>
+            <li><b>A confounded comparison.</b> Part of any measured gap can come from the safety guardrail or the exact prompt wording — not purely from reasoning.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== 13 · THANK YOU ==================== -->
+  <section class="slide">
+    <span class="wm" aria-hidden="true">✦</span>
+    <div class="slide-body" style="justify-content:center;align-items:center;text-align:center">
+      <div class="signal live" data-anim="1" style="margin:0 auto 1.4rem"><i class="r"></i><i class="a"></i><i class="g"></i></div>
+      <div class="eyebrow" data-anim="2">Thank you</div>
+      <h1 data-anim="3" style="font-size:clamp(36px,5.4vw,72px)">Questions?</h1>
+      <p class="lead" data-anim="4" style="margin:1.2rem auto 0;text-align:center">
+        Multi-Agent Traffic Negotiation — <span class="vs">ReAct vs. Zero-Shot</span>
+      </p>
+      <div data-anim="5" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:1.8rem">
+        <span class="pill">Haris</span>
+        <span class="pill">Azeel</span>
+        <span class="pill">Pratham</span>
+        <span class="pill">Darshan</span>
+        <span class="pill">Kuldeep</span>
+      </div>
+      <p data-anim="6" style="margin-top:1rem;font-size:13px;color:var(--faint)">TU Clausthal · ISSE / CORE · Foundations of Generative AI</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="chrome">
+  <span class="foot-brand">Traffic Negotiation · ReAct vs Zero-Shot</span>
+  <div class="nav">
+    <button id="prev" aria-label="Previous slide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <span class="counter" id="counter">1 / 13</span>
+    <button id="next" aria-label="Next slide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+</div>
+<div class="hint" id="hint">← → / Space to navigate · F fullscreen · P print → PDF</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0, n = slides.length;
+  var progress = document.getElementById('progress');
+  var counter = document.getElementById('counter');
+  var hint = document.getElementById('hint');
+
+  var lines = document.getElementById('lines');
+  if(lines){
+    var s='';
+    for(var c=0;c<=10;c++){ var x=8+c*28; s+='<line x1="'+x+'" y1="8" x2="'+x+'" y2="288"/>'; }
+    for(var r=0;r<=10;r++){ var y=8+r*28; s+='<line x1="8" y1="'+y+'" x2="288" y2="'+y+'"/>'; }
+    lines.innerHTML=s;
+  }
+
+  function show(k){
+    k = Math.max(0, Math.min(n-1, k));
+    slides.forEach(function(sl,idx){
+      sl.classList.remove('active','prev');
+      if(idx===k) sl.classList.add('active');
+      else if(idx<k) sl.classList.add('prev');
+    });
+    i=k;
+    progress.style.width = (k/(n-1)*100)+'%';
+    counter.textContent = (k+1)+' / '+n;
+    location.hash = k+1;
+  }
+  function next(){ show(i+1); } function prev(){ show(i-1); }
+  document.getElementById('next').onclick=next;
+  document.getElementById('prev').onclick=prev;
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); next(); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); prev(); }
+    else if(e.key==='Home'){ show(0); } else if(e.key==='End'){ show(n-1); }
+    else if(e.key==='f'||e.key==='F'){ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+    else if(e.key==='p'||e.key==='P'){ window.print(); }
+  });
+  var x0=null;
+  document.addEventListener('touchstart',function(e){ x0=e.touches[0].clientX; },{passive:true});
+  document.addEventListener('touchend',function(e){ if(x0===null) return; var dx=e.changedTouches[0].clientX-x0; if(Math.abs(dx)>50){ dx<0?next():prev(); } x0=null; },{passive:true});
+  var start = parseInt((location.hash||'').replace('#',''),10);
+  show(isNaN(start)?0:start-1);
+  setTimeout(function(){ hint.style.opacity='0'; }, 4200);
+})();
+</script>
+</body>
+</html>
