@@ -1,8 +1,7 @@
 # Architecture
 
-A single reference for the **whole system** — written to be presented to the team and
-to the professor. It explains *what we are building, why it's shaped this way, and how
-every piece fits together.*
+A single reference for the **whole system** — written for the team. It explains *what we
+are building, why it's shaped this way, and how every piece fits together.*
 
 **Project:** Multi-Agent Traffic Negotiation Simulator — **ReAct vs. Zero-Shot**.
 
@@ -111,7 +110,7 @@ Optional extras (commented in `requirements.txt`): `matplotlib` for path/metric 
 ```text
 .
 ├── README.md            Overview + quickstart (audience: everyone)
-├── ARCHITECTURE.md      This document (audience: team + professor)
+├── ARCHITECTURE.md      This document (audience: team)
 ├── TEAM_PLAN.md         Roles, weekly cadence, 1-month timeline
 ├── CONTRIBUTING.md      Setup + contribution workflow
 ├── src/                 Shared baseline (config, llm client)
@@ -122,7 +121,7 @@ Optional extras (commented in `requirements.txt`): `matplotlib` for path/metric 
 
 ---
 
-## 7. Design decisions & talking points
+## 7. Design decisions & rationale
 
 - **Stubs over emptiness.** Every agent ships as a working placeholder returning a valid
   move, so the simulator runs and tests pass before any LLM logic — progress is always
