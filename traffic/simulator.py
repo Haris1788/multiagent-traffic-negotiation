@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, START, END
 
 from traffic.environment import GridIntersection, Move, State
 
-AgentFn = Callable[[State, str], Move]
+AgentFn = Callable[..., Move]
 
 # Graphstate for Langraph integration
 class GraphState(TypedDict):
@@ -28,7 +28,7 @@ def decide(state: GraphState) -> dict:
     env = state["env"]
     agent_fn = state["agent_fn"]
     moves = {
-        v.id: agent_fn(env.state, v.id)
+        v.id: agent_fn(env.state, v.id, env)
         for v in env.state.vehicles
         if not v.arrived
     }

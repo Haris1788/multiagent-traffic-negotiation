@@ -10,10 +10,12 @@ from traffic.agents.zeroshot_agent import (
     _parse_move,
     _validate_or_correct_move,
 )
-from traffic.environment import Move, State
+from traffic.environment import GridIntersection, Move, State
 
 _SYSTEM = (
-    "You are a cautious traffic-control agent for a 10x10 grid intersection. "
+    "You are a cautious traffic-control agent for a 10x10 grid intersection with a "
+    "real traffic light and four-way right-of-way rules (left turns yield to straight "
+    "and right-turning traffic; red lights must stop before the box). "
     "Reason briefly, choose one legal action, then report a short observation. "
     "Use exactly this format:\n"
     "Thought: <one short sentence>\n"
@@ -41,15 +43,15 @@ def _move_to_token(move: Move) -> str:
     }.get(move, "WAIT")
 
 
-def _fallback_trace(state: State, car_id: str) -> dict[str, Any]:
-    move = _fallback_move(state, car_id)
+def _fallback_trace(state: State, car_id: str, env: GridIntersection | None = None) -> dict[str, Any]:
+    move = _fallback_move(state, car_id, env)
     me = next((v for v in state.vehicles if v.id == car_id), None)
     if me is None:
         thought = f"Car {car_id} is not active, so it should wait."
     elif move == (0, 0):
-        thought = f"Car {car_id} waits because a higher-priority path or occupied cell blocks progress."
+        thought = f"Car {car_id} waits for the light or a higher-priority path before proceeding."
     else:
-        thought = f"Car {car_id} can move toward {me.goal} while respecting reserved paths."
+        thought = f"Car {car_id} can move toward {me.goal} while respecting the light and right-of-way."
 
     return {
         "move": move,
@@ -60,7 +62,8 @@ def _fallback_trace(state: State, car_id: str) -> dict[str, Any]:
         "backend": "fallback",
     }
 
-def explain_move(state: State, car_id: str) -> dict[str, Any]:
+
+def explain_move(state: State, car_id: str, env: GridIntersection | None = None) -> dict[str, Any]:
     """Return a chosen move plus a compact ReAct trace."""
     me = next((v for v in state.vehicles if v.id == car_id), None)
     if me is None or me.arrived:
@@ -74,21 +77,21 @@ def explain_move(state: State, car_id: str) -> dict[str, Any]:
         }
 
     if not llm.is_available():
-        return _fallback_trace(state, car_id)
+        return _fallback_trace(state, car_id, env)
 
     prompt = "\n".join([
-        _build_zero_shot_prompt(state, car_id),
+        _build_zero_shot_prompt(state, car_id, env),
         "",
-        "Before acting, inspect possible conflicts with other cars.",
+        "Before acting, inspect possible conflicts with other cars and the light.",
         "Return Thought, Action, and Observation only.",
     ])
     try:
         raw = llm.complete(prompt, system=_SYSTEM, max_tokens=96)
         action_text = _extract_section(raw, "Action") or raw
         parsed_move = _parse_move(action_text)
-        move = _validate_or_correct_move(state, car_id, parsed_move)
+        move = _validate_or_correct_move(state, car_id, parsed_move, env)
         if move == (0, 0) and "WAIT" not in action_text.upper():
-            return _fallback_trace(state, car_id)
+            return _fallback_trace(state, car_id, env)
         corrected = move != parsed_move
         return {
             "move": move,
@@ -103,9 +106,9 @@ def explain_move(state: State, car_id: str) -> dict[str, Any]:
             "backend": "llm",
         }
     except Exception:
-        return _fallback_trace(state, car_id)
+        return _fallback_trace(state, car_id, env)
 
 
-def choose_move(state: State, car_id: str) -> Move:
+def choose_move(state: State, car_id: str, env: GridIntersection | None = None) -> Move:
     """Return ``(dx, dy)`` chosen via a ReAct-style decision path."""
-    return explain_move(state, car_id)["move"]
+    return explain_move(state, car_id, env)["move"]
