@@ -36,7 +36,7 @@ GRID_SIZE = 10
 CELL = 44
 MARGIN = 30
 BOARD_W = BOARD_H = GRID_SIZE * CELL + MARGIN * 2
-SIDEBAR = 360
+SIDEBAR = 390
 TOPBAR = 56
 BOTTOMBAR = 56
 WIN_W = BOARD_W + SIDEBAR
@@ -89,6 +89,19 @@ CAR_COLORS = {
     "W": (233, 78, 92),    # red    -> Car D
 }
 CAR_LABEL_BG = CAR_COLORS
+
+SCENARIO_NOTES = {
+    "Urban Four-Way": "Mixed straight, left, and right turns model a compact city junction with competing priorities.",
+    "Rush Hour (all turning)": "Every vehicle turns left, creating the kind of crossing conflicts seen during busy signal cycles.",
+    "Straight Crossing": "A baseline commute pattern: opposing flows should clear cleanly when lights and spacing are respected.",
+}
+
+RULE_NOTES = [
+    "Signal phase decides which road axis has legal right-of-way.",
+    "Red-light cars stop before the conflict box unless already inside.",
+    "Left turns yield because their path crosses oncoming traffic.",
+    "Speed 2 cars need one turn to brake, like reaction distance.",
+]
 
 ROAD_HALF_W = CELL * 1.55
 LANE_OFFSET = CELL * 0.24
@@ -297,6 +310,53 @@ def draw_traffic_lights(surf: pygame.Surface, env: GridIntersection):
             pygame.draw.circle(surf, color, (px, cy_dot), 5)
 
 
+def draw_real_world_overlay(surf: pygame.Surface, env: GridIntersection, font_small: pygame.font.Font):
+    cx = MARGIN + GRID_SIZE * CELL / 2
+    cy = MARGIN + GRID_SIZE * CELL / 2
+    box = pygame.Rect(0, 0, CELL * 2.9, CELL * 2.9)
+    box.center = (cx, cy)
+
+    zone = pygame.Surface((box.w, box.h), pygame.SRCALPHA)
+    pygame.draw.rect(zone, (*STATUS_AMBER, 38), zone.get_rect(), border_radius=8)
+    pygame.draw.rect(zone, (*STATUS_AMBER, 150), zone.get_rect(), 2, border_radius=8)
+    surf.blit(zone, box.topleft)
+
+    label = font_small.render("CONFLICT ZONE", True, (255, 226, 150))
+    label_bg = pygame.Surface((label.get_width() + 12, label.get_height() + 6), pygame.SRCALPHA)
+    pygame.draw.rect(label_bg, (25, 21, 12, 210), label_bg.get_rect(), border_radius=5)
+    surf.blit(label_bg, (box.centerx - label_bg.get_width() / 2, box.top + 8))
+    surf.blit(label, (box.centerx - label.get_width() / 2, box.top + 11))
+
+    stop_specs = [
+        ((cx - ROAD_HALF_W, cy + ROAD_HALF_W + CELL * 0.52), (cx + ROAD_HALF_W, cy + ROAD_HALF_W + CELL * 0.52), "N/S stop line"),
+        ((cx - ROAD_HALF_W, cy - ROAD_HALF_W - CELL * 0.52), (cx + ROAD_HALF_W, cy - ROAD_HALF_W - CELL * 0.52), "N/S stop line"),
+        ((cx - ROAD_HALF_W - CELL * 0.52, cy - ROAD_HALF_W), (cx - ROAD_HALF_W - CELL * 0.52, cy + ROAD_HALF_W), "E/W stop line"),
+        ((cx + ROAD_HALF_W + CELL * 0.52, cy - ROAD_HALF_W), (cx + ROAD_HALF_W + CELL * 0.52, cy + ROAD_HALF_W), "E/W stop line"),
+    ]
+    for p1, p2, _txt in stop_specs:
+        pygame.draw.line(surf, (248, 248, 248), p1, p2, 4)
+        pygame.draw.line(surf, (25, 25, 28), p1, p2, 1)
+
+    phase = env.state.light_phase
+    phase_text = "All-red clearance" if phase == "ALL_RED" else f"{phase} green"
+    chip = font_small.render(f"{phase_text} | {env.state.phase_timer} turns left", True, TEXT)
+    chip_rect = pygame.Rect(14, 14, chip.get_width() + 20, 26)
+    pygame.draw.rect(surf, (14, 16, 22), chip_rect, border_radius=7)
+    pygame.draw.rect(surf, CARD_BORDER, chip_rect, 1, border_radius=7)
+    surf.blit(chip, (chip_rect.x + 10, chip_rect.y + 6))
+
+
+def draw_vehicle_trail(surf: pygame.Surface, vehicle: Vehicle, color: tuple[int, int, int]):
+    if vehicle.arrived:
+        return
+    start = grid_to_px(vehicle.pos, initial_heading(vehicle))
+    goal = grid_to_px(vehicle.goal)
+    trail = pygame.Surface((BOARD_W, BOARD_H), pygame.SRCALPHA)
+    pygame.draw.line(trail, (*color, 90), start, goal, 2)
+    pygame.draw.circle(trail, (*color, 115), (int(goal[0]), int(goal[1])), 5)
+    surf.blit(trail, (0, 0))
+
+
 def draw_goal_marker(surf: pygame.Surface, pos: tuple[int, int], color: tuple[int, int, int], pulse_t: float):
     px, py = grid_to_px(pos)
     radius = 15 + 3 * math.sin(pulse_t * 3.0)
@@ -400,12 +460,13 @@ class Dropdown:
     options: list[str]
     selected: int = 0
     open_: bool = False
+    open_up: bool = False
 
     @property
     def value(self) -> str:
         return self.options[self.selected]
 
-    def draw(self, surf, font, font_small):
+    def draw(self, surf, font, font_small, draw_menu: bool = True):
         pygame.draw.rect(surf, CARD_BG_2, self.rect, border_radius=8)
         pygame.draw.rect(surf, CARD_BORDER, self.rect, 1, border_radius=8)
         txt = font_small.render(self.value, True, TEXT)
@@ -414,9 +475,13 @@ class Dropdown:
         cx, cy = self.rect.right - 16, self.rect.centery
         pygame.draw.polygon(surf, SUBTEXT, [(cx - 5, cy - 3), (cx + 5, cy - 3), (cx, cy + 4)])
 
+        if draw_menu:
+            self.draw_menu(surf, font_small)
+
+    def draw_menu(self, surf, font_small):
         if self.open_:
             item_h = 30
-            menu_rect = pygame.Rect(self.rect.x, self.rect.bottom + 4, self.rect.w + 60, item_h * len(self.options))
+            menu_rect = self.menu_rect()
             pygame.draw.rect(surf, CARD_BG_2, menu_rect, border_radius=8)
             pygame.draw.rect(surf, CARD_BORDER, menu_rect, 1, border_radius=8)
             for i, opt in enumerate(self.options):
@@ -428,7 +493,9 @@ class Dropdown:
 
     def menu_rect(self) -> pygame.Rect:
         item_h = 30
-        return pygame.Rect(self.rect.x, self.rect.bottom + 4, self.rect.w + 60, item_h * len(self.options))
+        height = item_h * len(self.options)
+        y = self.rect.y - height - 4 if self.open_up else self.rect.bottom + 4
+        return pygame.Rect(self.rect.x, y, self.rect.w + 60, height)
 
     def handle_click(self, pos) -> bool:
         """Returns True if the click was consumed by this widget."""
@@ -450,8 +517,9 @@ class Dropdown:
 
 # ── top bar ──────────────────────────────────────────────────────────────────
 def draw_topbar(surf, font_bold, font_small, scenario_dropdown: Dropdown, new_scenario_btn: Button):
-    pygame.draw.rect(surf, TOPBAR_BG, (0, 0, WIN_W, TOPBAR))
-    pygame.draw.line(surf, CARD_BORDER, (0, TOPBAR), (WIN_W, TOPBAR), 1)
+    width = surf.get_width()
+    pygame.draw.rect(surf, TOPBAR_BG, (0, 0, width, TOPBAR))
+    pygame.draw.line(surf, CARD_BORDER, (0, TOPBAR), (width, TOPBAR), 1)
 
     # logo mark
     logo_rect = pygame.Rect(20, 16, 36, 36)
@@ -464,7 +532,7 @@ def draw_topbar(surf, font_bold, font_small, scenario_dropdown: Dropdown, new_sc
     sub = font_small.render("Multi-Agent Intersection Simulation", True, SUBTEXT)
     surf.blit(sub, (68, 38))
 
-    scenario_dropdown.draw(surf, font_small, font_small)
+    scenario_dropdown.draw(surf, font_small, font_small, draw_menu=False)
     lbl = font_small.render("Scenario", True, SUBTEXT)
     surf.blit(lbl, (scenario_dropdown.rect.x - lbl.get_width() - 10,
                     scenario_dropdown.rect.y + (scenario_dropdown.rect.h - lbl.get_height()) // 2))
@@ -475,8 +543,9 @@ def draw_topbar(surf, font_bold, font_small, scenario_dropdown: Dropdown, new_sc
 # ── bottom playback bar ──────────────────────────────────────────────────────
 def draw_bottombar(surf, font_small, buttons: dict[str, Button], speed_dropdown: Dropdown, playing: bool):
     y0 = TOPBAR + BOARD_H
-    pygame.draw.rect(surf, BOTTOMBAR_BG, (0, y0, WIN_W, BOTTOMBAR))
-    pygame.draw.line(surf, CARD_BORDER, (0, y0), (WIN_W, y0), 1)
+    width = surf.get_width()
+    pygame.draw.rect(surf, BOTTOMBAR_BG, (0, y0, width, BOTTOMBAR))
+    pygame.draw.line(surf, CARD_BORDER, (0, y0), (width, y0), 1)
 
     buttons["play_pause"].label = "Pause" if playing else "Play"
     for key in ("play_pause", "step", "step_back", "reset"):
@@ -485,7 +554,7 @@ def draw_bottombar(surf, font_small, buttons: dict[str, Button], speed_dropdown:
     lbl = font_small.render("Speed", True, SUBTEXT)
     surf.blit(lbl, (speed_dropdown.rect.x - lbl.get_width() - 10,
                     speed_dropdown.rect.y + (speed_dropdown.rect.h - lbl.get_height()) // 2))
-    speed_dropdown.draw(surf, font_small, font_small)
+    speed_dropdown.draw(surf, font_small, font_small, draw_menu=False)
 
     for key in ("logs", "export"):
         buttons[key].draw(surf, font_small)
@@ -498,65 +567,87 @@ class Sidebar:
         self.font_small = font_small
         self.font_bold = font_bold
         self.log: list[tuple[int, str, tuple[int, int, int], str]] = []  # (turn, text, color, status)
+        self.scroll = 0
+        self.max_scroll = 0
 
     def add(self, turn: int, text: str, color=TEXT, status: str = "ACCEPTED"):
         self.log.append((turn, text, color, status))
         self.log = self.log[-60:]
 
+    def scroll_by(self, amount: int):
+        self.scroll = max(0, min(self.max_scroll, self.scroll + amount))
+
     def _card(self, surf, x, y, w, h, label, value, value_color, icon_color=None):
-        pygame.draw.rect(surf, CARD_BG, (x, y, w, h), border_radius=10)
-        pygame.draw.rect(surf, CARD_BORDER, (x, y, w, h), 1, border_radius=10)
+        pygame.draw.rect(surf, CARD_BG, (x, y, w, h), border_radius=8)
+        pygame.draw.rect(surf, CARD_BORDER, (x, y, w, h), 1, border_radius=8)
         lbl = self.font_small.render(label, True, SUBTEXT)
         surf.blit(lbl, (x + 12, y + 8))
         val = self.font_bold.render(str(value), True, value_color)
         surf.blit(val, (x + 12, y + 26))
 
-    def draw(self, surf, x0, turn, max_turns, collisions, status_summary,
+    def _section_card(self, surf, x, y, w, h, title):
+        pygame.draw.rect(surf, CARD_BG, (x, y, w, h), border_radius=8)
+        pygame.draw.rect(surf, CARD_BORDER, (x, y, w, h), 1, border_radius=8)
+        title_txt = self.font_bold.render(title, True, TEXT)
+        surf.blit(title_txt, (x + 12, y + 9))
+
+    def draw(self, surf, x0, turn, max_turns, collisions, near_misses, red_violations,
+              status_summary, light_phase, phase_timer, scenario_name,
               vehicles, colors, speeds_kmh, agent_states, negotiation_state, negotiation_desc):
         pygame.draw.rect(surf, SIDEBAR_BG, (x0, TOPBAR, SIDEBAR, BOARD_H))
         pygame.draw.line(surf, CARD_BORDER, (x0, TOPBAR), (x0, TOPBAR + BOARD_H), 1)
 
-        pad = 16
-        y = TOPBAR + 16
+        old_clip = surf.get_clip()
+        viewport = pygame.Rect(x0, TOPBAR, SIDEBAR, BOARD_H)
+        surf.set_clip(viewport)
 
-        card_w = (SIDEBAR - pad * 2 - 16) / 3
-        card_h = 52
-        self._card(surf, x0 + pad, y, card_w, card_h, "Current Turn", f"{turn} / {max_turns}", TEXT)
-        self._card(surf, x0 + pad + card_w + 8, y, card_w, card_h, "Collisions", collisions,
+        pad = 16
+        y = TOPBAR + 14 - self.scroll
+
+        card_w = (SIDEBAR - pad * 2 - 8) / 2
+        card_h = 48
+        self._card(surf, x0 + pad, y, card_w, card_h, "Simulated time", f"{turn} / {max_turns}", TEXT)
+        phase_color = STATUS_AMBER if light_phase == "ALL_RED" else STATUS_GREEN
+        self._card(surf, x0 + pad + card_w + 8, y, card_w, card_h, "Signal phase",
+                    f"{light_phase} ({phase_timer})", phase_color)
+        y += card_h + 8
+        self._card(surf, x0 + pad, y, card_w, card_h, "Collisions", collisions,
                     STATUS_RED if collisions else STATUS_GREEN)
-        self._card(surf, x0 + pad + 2 * (card_w + 8), y, card_w, card_h, "Overall Status", status_summary,
-                    STATUS_GREEN if "arrived" in status_summary.lower() else TEXT)
-        y += card_h + 18
+        risk_value = f"{near_misses} near / {red_violations} red"
+        risk_color = STATUS_RED if collisions else STATUS_AMBER if near_misses or red_violations else STATUS_GREEN
+        self._card(surf, x0 + pad + card_w + 8, y, card_w, card_h, "Safety interventions",
+                    risk_value, risk_color)
+        y += card_h + 12
 
         header = self.font_bold.render("Agent Status", True, TEXT)
         surf.blit(header, (x0 + pad, y))
-        y += 26
+        summary = self.font_small.render(status_summary, True, SUBTEXT)
+        surf.blit(summary, (x0 + SIDEBAR - pad - summary.get_width(), y + 2))
+        y += 22
 
         n = len(vehicles)
         agent_w = (SIDEBAR - pad * 2 - (n - 1) * 8) / max(n, 1)
-        agent_h = 78
+        agent_h = 66
         for i, v in enumerate(vehicles):
             ax = x0 + pad + i * (agent_w + 8)
             color = colors.get(v.id, TEXT)
-            pygame.draw.rect(surf, CARD_BG, (ax, y, agent_w, agent_h), border_radius=10)
+            pygame.draw.rect(surf, CARD_BG, (ax, y, agent_w, agent_h), border_radius=8)
             pygame.draw.rect(surf, color, (ax, y, agent_w, 3))
-            pygame.draw.rect(surf, CARD_BORDER, (ax, y, agent_w, agent_h), 1, border_radius=10)
+            pygame.draw.rect(surf, CARD_BORDER, (ax, y, agent_w, agent_h), 1, border_radius=8)
             name = self.font_small.render(CAR_ID_LABEL.get(v.id, v.id), True, TEXT)
-            surf.blit(name, (ax + 10, y + 10))
+            surf.blit(name, (ax + 9, y + 9))
             st = agent_states.get(v.id, "Waiting")
             st_color = {"Moving": STATUS_BLUE, "Waiting": SUBTEXT, "Yielding": STATUS_AMBER,
                         "Arrived": STATUS_GREEN}.get(st, TEXT)
-            pygame.draw.circle(surf, st_color, (ax + 12, y + 34), 4)
+            pygame.draw.circle(surf, st_color, (ax + 11, y + 32), 4)
             st_txt = self.font_small.render(st, True, st_color)
-            surf.blit(st_txt, (ax + 22, y + 27))
+            surf.blit(st_txt, (ax + 21, y + 25))
             speed_txt = self.font_small.render(f"{speeds_kmh.get(v.id, 0)} km/h", True, SUBTEXT)
-            surf.blit(speed_txt, (ax + 10, y + 50))
-        y += agent_h + 18
+            surf.blit(speed_txt, (ax + 9, y + 47))
+        y += agent_h + 12
 
-        pygame.draw.rect(surf, CARD_BG, (x0 + pad, y, SIDEBAR - pad * 2, 62), border_radius=10)
-        pygame.draw.rect(surf, CARD_BORDER, (x0 + pad, y, SIDEBAR - pad * 2, 62), 1, border_radius=10)
-        neg_title = self.font_bold.render("Negotiation State", True, TEXT)
-        surf.blit(neg_title, (x0 + pad + 12, y + 8))
+        panel_h = 76
+        self._section_card(surf, x0 + pad, y, SIDEBAR - pad * 2, panel_h, "Decision Layer")
         pill_color = {"Normal Flow": STATUS_GREEN, "Yielding": STATUS_AMBER,
                       "Conflict": STATUS_RED}.get(negotiation_state, STATUS_GREEN)
         pill_txt = self.font_small.render(negotiation_state, True, (15, 15, 18))
@@ -564,13 +655,29 @@ class Sidebar:
         pill_rect = pygame.Rect(x0 + SIDEBAR - pad - pill_w - 12, y + 7, pill_w, 22)
         pygame.draw.rect(surf, pill_color, pill_rect, border_radius=11)
         surf.blit(pill_txt, (pill_rect.x + 10, pill_rect.y + 3))
-        desc_lines = self._wrap(negotiation_desc, SIDEBAR - pad * 2 - 24)
         dy = y + 32
-        for line in desc_lines[:2]:
+        for line in self._wrap(negotiation_desc, SIDEBAR - pad * 2 - 24)[:3]:
             d = self.font_small.render(line, True, SUBTEXT)
             surf.blit(d, (x0 + pad + 12, dy))
+            dy += 15
+        y += panel_h + 10
+
+        mapping_h = 118
+        self._section_card(surf, x0 + pad, y, SIDEBAR - pad * 2, mapping_h, "Real-World Mapping")
+        note = SCENARIO_NOTES.get(scenario_name, "")
+        dy = y + 31
+        for line in self._wrap(note, SIDEBAR - pad * 2 - 24)[:2]:
+            txt = self.font_small.render(line, True, SUBTEXT)
+            surf.blit(txt, (x0 + pad + 12, dy))
+            dy += 15
+        dy += 3
+        for rule in RULE_NOTES[:3]:
+            bullet_color = STATUS_GREEN if "Signal" in rule else STATUS_AMBER if "Left" in rule else STATUS_BLUE
+            pygame.draw.circle(surf, bullet_color, (x0 + pad + 17, dy + 7), 3)
+            txt = self.font_small.render(self._clip(rule, SIDEBAR - pad * 2 - 38), True, TEXT)
+            surf.blit(txt, (x0 + pad + 28, dy))
             dy += 16
-        y += 62 + 18
+        y += mapping_h + 10
 
         row_header = self.font_bold.render("Recent Agent Decisions", True, TEXT)
         surf.blit(row_header, (x0 + pad, y))
@@ -580,17 +687,37 @@ class Sidebar:
 
         max_y = TOPBAR + BOARD_H - 10
         for turn_no, text, color, log_status in reversed(self.log):
-            if y > max_y:
-                break
             row_h = 20
-            turn_txt = self.font_small.render(f"Turn {turn_no}", True, MUTED)
-            surf.blit(turn_txt, (x0 + pad, y))
-            body_txt = self.font_small.render(text, True, color)
-            surf.blit(body_txt, (x0 + pad + 62, y))
-            status_color = STATUS_GREEN if log_status == "ACCEPTED" else STATUS_AMBER
-            status_txt = self.font_small.render(log_status, True, status_color)
-            surf.blit(status_txt, (x0 + SIDEBAR - pad - status_txt.get_width(), y))
+            if y + row_h >= TOPBAR and y <= max_y:
+                turn_txt = self.font_small.render(f"Turn {turn_no}", True, MUTED)
+                surf.blit(turn_txt, (x0 + pad, y))
+                body_txt = self.font_small.render(self._clip(text, SIDEBAR - pad * 2 - 104), True, color)
+                surf.blit(body_txt, (x0 + pad + 62, y))
+                status_color = STATUS_RED if log_status == "CONFLICT" else STATUS_GREEN if log_status == "ACCEPTED" else STATUS_AMBER
+                status_txt = self.font_small.render(log_status, True, status_color)
+                surf.blit(status_txt, (x0 + SIDEBAR - pad - status_txt.get_width(), y))
             y += row_h
+
+        content_height = y + self.scroll - TOPBAR + 8
+        self.max_scroll = max(0, content_height - BOARD_H)
+        self.scroll = min(self.scroll, self.max_scroll)
+        surf.set_clip(old_clip)
+
+        if self.max_scroll:
+            track = pygame.Rect(x0 + SIDEBAR - 7, TOPBAR + 8, 3, BOARD_H - 16)
+            knob_h = max(36, int(track.h * BOARD_H / content_height))
+            knob_y = track.y + int((track.h - knob_h) * (self.scroll / self.max_scroll))
+            pygame.draw.rect(surf, (46, 50, 64), track, border_radius=2)
+            pygame.draw.rect(surf, ACCENT, (track.x, knob_y, track.w, knob_h), border_radius=2)
+
+    def _clip(self, text, max_w):
+        if self.font_small.size(text)[0] <= max_w:
+            return text
+        ellipsis = "..."
+        clipped = text
+        while clipped and self.font_small.size(clipped + ellipsis)[0] > max_w:
+            clipped = clipped[:-1]
+        return clipped + ellipsis if clipped else ellipsis
 
     def _wrap(self, text, max_w):
         words = text.split(" ")
@@ -657,7 +784,7 @@ class App:
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("LLM Traffic Negotiation — Intersection Dashboard")
-        self.screen = pygame.display.set_mode((WIN_W, WIN_H))
+        self.screen = pygame.display.set_mode((WIN_W, WIN_H), pygame.RESIZABLE)
         self.clock = pygame.time.Clock()
 
         self.font = pygame.font.SysFont("Segoe UI", 15)
@@ -669,8 +796,8 @@ class App:
         self.sidebar = Sidebar(self.font, self.font_small, self.font_bold)
 
         self.scenario_names = list(SCENARIOS.keys())
-        self.scenario_dropdown = Dropdown(pygame.Rect(WIN_W - 300, 20, 130, 30), self.scenario_names)
-        self.new_scenario_btn = Button(pygame.Rect(WIN_W - 150, 20, 130, 30), "+ New Scenario")
+        self.scenario_dropdown = Dropdown(pygame.Rect(0, 20, 130, 30), self.scenario_names)
+        self.new_scenario_btn = Button(pygame.Rect(0, 20, 130, 30), "+ New Scenario")
         self.settings_btn = Button(pygame.Rect(WIN_W - 44, 20, 30, 30), "⚙")
 
         by0 = TOPBAR + BOARD_H + 14
@@ -679,20 +806,31 @@ class App:
             "step": Button(pygame.Rect(118, by0, 70, 36), "Step"),
             "step_back": Button(pygame.Rect(196, by0, 96, 36), "Step Back"),
             "reset": Button(pygame.Rect(300, by0, 70, 36), "Reset"),
-            "logs": Button(pygame.Rect(WIN_W - 190, by0, 70, 36), "Logs"),
-            "export": Button(pygame.Rect(WIN_W - 112, by0, 92, 36), "Export"),
+            "logs": Button(pygame.Rect(0, by0, 70, 36), "Logs"),
+            "export": Button(pygame.Rect(0, by0, 92, 36), "Export"),
         }
-        self.speed_dropdown = Dropdown(pygame.Rect(430, by0 + 3, 70, 30), ["0.5x", "1.0x", "2.0x", "4.0x"], selected=1)
+        self.speed_dropdown = Dropdown(pygame.Rect(430, by0 + 3, 70, 30), ["0.5x", "1.0x", "2.0x", "4.0x"], selected=1, open_up=True)
 
         self.history: list[Snapshot] = []
         self.history_cursor = -1  # index into history when stepped back; -1 = live
         self.export_message = ""
         self.export_message_t = 0.0
+        self._active_scenario = self.scenario_names[0]
+        self._layout_controls()
 
         self._load_scenario(self.scenario_names[0])
 
+    def _layout_controls(self):
+        width = max(WIN_W, self.screen.get_width())
+        self.scenario_dropdown.rect.x = width - 330
+        self.new_scenario_btn.rect.x = width - 180
+        self.settings_btn.rect.x = width - 44
+        self.buttons["logs"].rect.x = width - 190
+        self.buttons["export"].rect.x = width - 112
+
     # ── scenario / episode lifecycle ────────────────────────────────────
     def _load_scenario(self, name: str):
+        self._active_scenario = name
         self.env = GridIntersection(max_turns=40, scenario=name)
         self.state = self.env.reset()
         self.vehicle_order = [v.id for v in self.state.vehicles]
@@ -704,7 +842,7 @@ class App:
         self.anim_to_heading = dict(self.heading)
         self.agent_states = {v.id: "Waiting" for v in self.state.vehicles}
         self.negotiation_state = "Normal Flow"
-        self.negotiation_desc = "Agents are negotiating right-of-way using natural language and traffic rules. No conflicts detected."
+        self.negotiation_desc = "Agents choose motion one turn at a time while the environment enforces signals, stop lines, and collision risk."
 
         self.sidebar.log = []
         self.sidebar.add(0, f"Scenario loaded: {name}.", SUBTEXT, "INFO")
@@ -829,13 +967,13 @@ class App:
                     self.collision_flash.add(v.pos)
             self.sidebar.add(self.state.turn, "Collision detected — cars held position.", STATUS_RED, "CONFLICT")
             self.negotiation_state = "Conflict"
-            self.negotiation_desc = "A collision was detected this turn; involved agents held their prior position."
+            self.negotiation_desc = "A conflict path overlapped; the simulator held involved cars like an emergency stop."
         elif self.env.red_light_violations > prev_violations:
             self.negotiation_state = "Yielding"
-            self.negotiation_desc = "A car was stopped short of the box to respect the red light."
+            self.negotiation_desc = "A car tried to enter on red, so the traffic-rule layer stopped it before the conflict zone."
         else:
             self.negotiation_state = "Normal Flow"
-            self.negotiation_desc = "Agents are negotiating right-of-way using natural language and traffic rules. No conflicts detected."
+            self.negotiation_desc = "Agents are clearing legal movements while the signal and yield rules manage right-of-way."
 
         for v in self.state.vehicles:
             self.anim_from[v.id] = prev_positions[v.id]
@@ -861,6 +999,15 @@ class App:
                     return False
                 elif event.key == pygame.K_SPACE:
                     self.playing = not self.playing
+            elif event.type == pygame.VIDEORESIZE:
+                w = max(WIN_W, event.w)
+                h = max(WIN_H, event.h)
+                self.screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
+                self._layout_controls()
+            elif event.type == pygame.MOUSEWHEEL:
+                mx, my = pygame.mouse.get_pos()
+                if BOARD_W <= mx <= BOARD_W + SIDEBAR and TOPBAR <= my <= TOPBAR + BOARD_H:
+                    self.sidebar.scroll_by(-event.y * 42)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._handle_click(event.pos)
         return True
@@ -957,7 +1104,10 @@ class App:
         board = pygame.Surface((BOARD_W, BOARD_H))
         board.blit(self.city_surface, (0, 0))
 
+        draw_real_world_overlay(board, self.env, self.font_small)
+
         for v in self.state.vehicles:
+            draw_vehicle_trail(board, v, self.colors.get(v.id, (255, 255, 255)))
             draw_goal_marker(board, v.goal, self.colors.get(v.id, (255, 255, 255)), now)
 
         draw_traffic_lights(board, self.env)
@@ -976,17 +1126,24 @@ class App:
             # doesn't jump sideways when the heading changes mid-turn
             start_px, start_py = grid_to_px((fx, fy), from_h)
             end_px, end_py = grid_to_px((tx, ty), to_h)
-            px = start_px + (end_px - start_px) * ease
-            py = start_py + (end_py - start_py) * ease
 
-            # the sprite always faces the direction it is actually travelling
-            # this turn (the straight line from start to end), so it never
-            # looks like it's sliding sideways while pointed the wrong way
             dx, dy = end_px - start_px, end_py - start_py
-            if dx == 0 and dy == 0:
-                angle = heading_to_angle(to_h if to_h != (0, 0) else from_h)
+            turning = from_h != to_h and (dx != 0 or dy != 0)
+            if turning:
+                ctrl_px, ctrl_py = grid_to_px((fx, fy), to_h)
+                inv = 1 - ease
+                px = inv * inv * start_px + 2 * inv * ease * ctrl_px + ease * ease * end_px
+                py = inv * inv * start_py + 2 * inv * ease * ctrl_py + ease * ease * end_py
+                from_angle = heading_to_angle(from_h)
+                to_angle = heading_to_angle(to_h)
+                angle = shortest_angle_lerp(from_angle, to_angle, ease)
             else:
-                angle = heading_to_angle((dx, dy))
+                px = start_px + dx * ease
+                py = start_py + dy * ease
+                if dx == 0 and dy == 0:
+                    angle = heading_to_angle(to_h if to_h != (0, 0) else from_h)
+                else:
+                    angle = heading_to_angle((dx, dy))
 
             flash = v.pos in self.collision_flash
             waiting = v.speed == 0 and not v.arrived and self.phase == "idle"
@@ -1001,11 +1158,15 @@ class App:
         speeds_kmh = {v.id: v.speed * 18 for v in self.state.vehicles}
         self.sidebar.draw(
             self.screen, BOARD_W, self.state.turn, self.env.max_turns, self.env.collisions,
-            self._status_summary(), self.state.vehicles, self.colors, speeds_kmh,
+            self.env.near_misses, self.env.red_light_violations, self._status_summary(),
+            self.env.state.light_phase, self.env.state.phase_timer, self._active_scenario,
+            self.state.vehicles, self.colors, speeds_kmh,
             self.agent_states, self.negotiation_state, self.negotiation_desc,
         )
 
         draw_bottombar(self.screen, self.font_small, self.buttons, self.speed_dropdown, self.playing)
+        self.scenario_dropdown.draw_menu(self.screen, self.font_small)
+        self.speed_dropdown.draw_menu(self.screen, self.font_small)
 
         if self.export_message and now - self.export_message_t < 3.0:
             msg = self.font_small.render(self.export_message, True, STATUS_GREEN)
