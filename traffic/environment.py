@@ -216,7 +216,7 @@ class GridIntersection:
             self.state.light_phase = "ALL_RED"
             self.state.phase_timer = ALL_RED_DURATION
         else:  # coming out of ALL_RED, alternate which axis gets green next
-            self._next_green = "EW" if getattr(self, "_next_green", "EW") == "NS" else "NS"
+            self._next_green = "EW" if getattr(self, "_next_green", "NS") == "NS" else "NS"
             self.state.light_phase = self._next_green
             self.state.phase_timer = GREEN_DURATION
 
