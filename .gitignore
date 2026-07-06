@@ -29,6 +29,9 @@ Reference_PDFs/
 tasks.ps1
 *.local.ps1
 
+# --- Presentation (WIP, not ready to push yet) ---
+presentation/
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
