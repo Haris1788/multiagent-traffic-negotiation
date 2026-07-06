@@ -17,3 +17,15 @@ def test_evaluate_aggregates(monkeypatch):
     summary = evaluate("zeroshot", episodes=3)
     assert summary["episodes"] == 3
     assert 0.0 <= summary["success_rate"] <= 1.0
+
+
+def test_light_cycle_reaches_ew_after_first_clearance():
+    env = GridIntersection()
+    phases = []
+    for _ in range(9):
+        phases.append(env.state.light_phase)
+        env.step({})
+
+    assert phases[:6] == ["NS"] * 6
+    assert phases[6:8] == ["ALL_RED"] * 2
+    assert phases[8] == "EW"

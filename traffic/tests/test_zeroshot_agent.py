@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from src import llm
@@ -11,7 +13,8 @@ VALID_MOVES = {
     (2, 0), (-2, 0), (0, 2), (0, -2),
     (0, 0),
 }
-LLM_AVAILABLE = llm.is_available()
+RUN_LIVE_LLM_TESTS = os.getenv("RUN_LIVE_LLM_TESTS") == "1"
+LLM_AVAILABLE = RUN_LIVE_LLM_TESTS and llm.is_available()
 
 
 def _two_car_state() -> State:
@@ -52,8 +55,8 @@ def test_prompt_contains_car_id():
 
 def test_prompt_contains_position_and_goal():
     prompt = _build_prompt(_two_car_state(), "A")
-    assert "(2, 5)" in prompt
-    assert "(9, 5)" in prompt
+    assert "column=2, row=5" in prompt
+    assert "column=9, row=5" in prompt
 
 
 def test_prompt_lists_other_active_cars():
